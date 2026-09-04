@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <title>Personal Data Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar-custom">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand-custom">
+                    <span class="brand-icon"><i class="bi bi-list"></i></span>
+                    <span> |  Personal Data Management</span>
+                </a>
+
+                <!-- <div class="panel-nav">
+                    <a href="{{ url_for('rental_management') }}" class="btn-rental active">
+                        <i class="bi bi-building"></i>Rental Management
+                    </a>
+                    <a href="{{ url_for('rides_management') }}" class="btn-rides">
+                        <i class="bi bi-car-front"></i>Rides Management
+                    </a>
+                </div> -->
+
+                <div class="d-flex align-items-center gap-3">
+                    {% if me_type in [1, 5] %}
+                    <a href="{{ url_for('finance_management') }}" class="header-btn"><i class="bi bi-bank2"></i>Finance Management</a>
+                    {% endif %}
+                    <!-- <a href="#" class="header-btn" id="navLedger"><i class="bi bi-journal-text"></i>Rent Ledger</a> -->
+                                     <div class="user-greeting">
+                        <span class="user-avatar-sm"><i class="bi bi-person-fill"></i></span>
+                        Hello, {{ session['firstname'] }}
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">
+                        <i class="bi bi-box-arrow-right"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container-fluid px-3 px-lg-4 pt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }} mb-0">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="page-layout container-fluid px-3 px-lg-4">
+        <aside class="sidebar-panel offcanvas-lg offcanvas-start" tabindex="-1" id="filterSidebar" aria-label="Filters panel">
+            <div class="offcanvas-header d-lg-none pb-2">
+                <h5 class="offcanvas-title text-white mb-0"><i class="bi bi-funnel me-2"></i>Filters</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body p-0">
+                <div class="sidebar-inner">
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-funnel me-2"></i>Filters</h6>
+                        <form method="get" action="{{ url_for('rental_management') }}">
+                            <label class="filter-label" for="filterYear">Payment Year</label>
+                            <select class="form-select dark-select" id="filterYear" name="year">
+                                <option value="" {% if not filter_year %}selected{% endif %}>All Years</option>
+                                {% for yr in years %}
+                                    <option value="{{ yr }}" {% if filter_year == yr|string %}selected{% endif %}>{{ yr }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-apply-filter w-100 mt-3">
+                                <i class="bi bi-check2-circle me-1"></i>Apply Filter
+                            </button>
+                            <a href="{{ url_for('rental_management') }}" class="btn btn-reset-filter w-100 mt-2">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                            </a>
+                        </form>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-graph-up me-2"></i>Overview</h6>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-people me-2"></i>Total Tenants</span>
+                            <span class="stat-value">{{ stats.tenants if stats else 0 }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-house-heart me-2"></i>Members Housed</span>
+                            <span class="stat-value">{{ stats.members if stats else 0 }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-cash-coin me-2"></i>Collected This Month</span>
+                            <span class="stat-value text-green">₹ {{ '{:,.0f}'.format(stats.collected_month) if stats else 0 }}</span>
+                        </div>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-link-45deg me-2"></i>Quick Links</h6>
+                        <div class="side-links">
+                            <a href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i>Dashboard</a>
+                            {% if me_type != 4 %}
+                            <a href="{{ url_for('rides_management') }}"><i class="bi bi-car-front"></i>Rides Management</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <button class="btn btn-filter-toggle d-lg-none mb-3" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterSidebar">
+                <i class="bi bi-funnel me-1"></i>Filters
+            </button>
+
+            <div class="users-card">
+                <div class="dash-profile">
+                    <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
+                    <div>
+                        <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
+                        <div class="dp-email">{{ session['email'] }}</div>
+                    </div>
+                    <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
+                        <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name }}
+                    </span>
+                </div>
+
+                {% if stats %}
+                <div class="stats-grid">
+                    <div class="stat-card indigo">
+                        <div class="sc-icon"><i class="bi bi-people-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">{{ stats.tenants }}</div>
+                            <div class="sc-label">Total Tenants</div>
+                        </div>
+                    </div>
+                    <div class="stat-card cyan">
+                        <div class="sc-icon"><i class="bi bi-house-heart-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">{{ stats.members }}</div>
+                            <div class="sc-label">Members Housed</div>
+                        </div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="sc-icon"><i class="bi bi-cash-coin"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(stats.collected_month) }}</div>
+                            <div class="sc-label">This Month Collection</div>
+                        </div>
+                    </div>
+                    <div class="stat-card pink">
+                        <div class="sc-icon"><i class="bi bi-piggy-bank-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(stats.collected_all) }}</div>
+                            <div class="sc-label">Total Paid <small class="sc-sub">(All Time)</small></div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="rm-head">
+                    <div class="rm-tabs" role="tablist">
+                        <button type="button" class="rm-tab active" id="tabTenants">
+                            <i class="bi bi-people me-1"></i>Tenants <span class="rm-count">{{ rentals|length }}</span>
+                        </button>
+                        <button type="button" class="rm-tab" id="tabLedger">
+                            <i class="bi bi-journal-text me-1"></i>Rent Ledger <span class="rm-count">{{ ledger|length }}</span>
+                        </button>
+                    </div>
+                    <div class="users-head-right">
+                        {% if me_type == 4 %}
+                        <a href="{{ url_for('my_details_pdf') }}" class="btn-add-user dl-link" title="Download my personal details (PDF)"><i class="bi bi-person-badge"></i>My Details</a>
+                        <a href="{{ url_for('my_rent_pdf') }}" class="btn-add-user dl-link" title="Download my rent payment ledger (PDF)"><i class="bi bi-journal-text"></i>My Rent PDF</a>
+                        {% endif %}
+                        <input type="text" id="tenantSearch" class="table-search" placeholder="Search tenants..." autocomplete="off">
+                        {% if me_type in [1, 2, 5] %}
+                        <a href="#" class="btn-add-user" id="openTenantModal"><i class="bi bi-person-plus"></i>Add Tenant</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="rm-panel" id="tenantsPanel">
+                    <div class="table-responsive">
+                        <table class="table users-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Tenant</th>
+                                    <th>Contact</th>
+                                    <th>Aadhaar</th>
+                                    <th>Floor</th>
+                                    <th>Members</th>
+                                    <th>Joining Date</th>
+                                    <th>Total Paid</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if rentals %}
+                                    {% for r in rentals %}
+                                        <tr>
+                                            <td class="cell-id">{{ loop.index }}</td>
+                                            <td>
+                                                <div class="user-cell">
+                                                    <span class="user-avatar-sm2">{{ r['firstname'][0]|upper }}{{ r['lastname'][0]|upper }}</span>
+                                                    <div class="user-meta">
+                                                        <span class="user-name">{{ r['firstname'] }} {{ r['lastname'] }}</span>
+                                                        <small class="user-sub">{{ r['type_name'] or 'Member' }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="mono cell-muted user-sub">{{ r['phone'] }}</td>
+                                            <td class="mono cell-muted">**** **** {{ r['aadharno'][-4:] }}</td>
+                                            <td>
+                                                {% if r['floortype'] %}
+                                                    <span class="badge-soft gray"><i class="bi bi-layers"></i>{{ r['floortype'] }}</span>
+                                                {% else %}
+                                                    <span class="badge-soft gray"><i class="bi bi-dash-circle"></i>N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td><span class="badge-soft cyan"><i class="bi bi-people"></i>{{ r['total_member'] }}</span></td>
+                                            <td class="cell-muted">{{ r['rental_joiningdate'].strftime('%d %b %Y') if r['rental_joiningdate'] else '—' }}</td>
+                                            <td class="paid-cell">
+                                                <div class="paid-wrap">
+                                                    <span class="money green">₹ {{ '{:,.2f}'.format(r['total_paid']) }}</span>
+                                                    <small class="months-chip">{{ r['months_paid'] }} mo.</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="d-inline-flex justify-content-center gap-2 actions-cell">
+                                                    {% if me_type in [1, 2, 5] %}
+                                                    <button type="button" class="btn-action edit js-edit-rental"
+                                                            data-id="{{ r['id'] }}"
+                                                            data-name="{{ r['firstname'] }} {{ r['lastname'] }}"
+                                                            data-aadhar="{{ r['aadharno'] }}"
+                                                            data-pan="{{ r['panno'] or '' }}"
+                                                            data-floor="{{ r['floortype'] or '' }}"
+                                                            data-occupation="{{ r['occupation'] or '' }}"
+                                                            data-members="{{ r['total_member'] }}"
+                                                            data-address="{{ r['aadhar_address'] or '' }}"
+                                                            data-joining="{{ r['rental_joiningdate'].strftime('%Y-%m-%d') if r['rental_joiningdate'] else '' }}"
+                                                            data-has-agree="{{ 1 if r['rentagrement'] else 0 }}"
+                                                            data-has-aadharimg="{{ 1 if r['aadharimage'] else 0 }}"
+                                                            data-has-panimg="{{ 1 if r['panimage'] else 0 }}"
+                                                            data-has-rentalimg="{{ 1 if r['rentalimage'] else 0 }}">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    {% endif %}
+                                                    {% if me_type in [1, 5] %}
+                                                    <a class="btn-action dl" title="Download all details (PDF report + Aadhaar + PAN + Rent Agreement)"
+                                                       href="{{ url_for('rental_download_pdf', rental_id=r['id']) }}">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
+                                                    {% endif %}
+                                                   <button type="button"
+                                                       class="btn-action edit js-add-rent"
+                                                         data-id="{{ r['id'] }}"
+                                                         data-name="{{ r['firstname'] }} {{ r['lastname'] }}"
+                                                         title="Add Rent">
+                                                         <i class="bi bi-cash-stack"></i>
+                                                   </button>
+                                                   <button type="button"
+                                                         class="btn-action success js-history"
+                                                           data-id="{{ r['id'] }}"
+                                                          data-name="{{ r['firstname'] }} {{ r['lastname'] }}"
+                                                           title="History">
+                                                         <i class="bi bi-clock-history"></i>
+                                                   </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9">
+                                            <div class="empty-state">
+                                                <i class="bi bi-house-slash"></i>
+                                                <p class="mb-0">No tenants yet. Click "Add Tenant" to register the first rental.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="rm-panel d-none" id="ledgerPanel">
+                    <div class="table-responsive">
+                        <table class="table users-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Receipt</th>
+                                    <th>Tenant</th>
+                                    <th>Aadhaar</th>
+                                    <th>Period</th>
+                                    <th>Amount</th>
+                                    <th>Paid On</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set _mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] %}
+                                {% if ledger %}
+                                    {% for l in ledger %}
+                                        <tr>
+                                            <td class="cell-id">{{ loop.index }}</td>
+                                            <td class="mono cell-muted">#RD-{{ '%04d'|format(l['id']) }}</td>
+                                            <td>
+                                                <div class="user-cell">
+                                                    <span class="user-avatar-sm2">{{ l['firstname'][0]|upper }}{{ l['lastname'][0]|upper }}</span>
+                                                    <span class="user-name">{{ l['firstname'] }} {{ l['lastname'] }}</span>
+                                                </div>
+                                            </td>
+                                            <td class="mono cell-muted">**** **** {{ l['aadharno'][-4:] }}</td>
+                                            <td><span class="badge-soft indigo"><i class="bi bi-calendar3"></i>{{ _mn[l['month'] - 1] }} {{ l['year'] }}</span></td>
+                                            <td><span class="money green">₹ {{ '{:,.2f}'.format(l['rentamount']) }}</span></td>
+                                            <td class="cell-muted">{{ l['currentdate'].strftime('%d %b %Y, %H:%M') }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7">
+                                            <div class="empty-state">
+                                                <i class="bi bi-journal-x"></i>
+                                                <p class="mb-0">{% if filter_year %}No payments recorded for {{ filter_year }}.{% else %}No rent payments recorded yet.{% endif %}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Tenant Modal -->
+    <div class="modal fade" id="addTenantModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-house-add me-2"></i>Add Tenant</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addTenantForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="tenantGeneralError"></div>
+
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="tUser">Select Tenant (User)</label>
+                                <select class="form-select dark-select" id="tUser" name="userid">
+                                    <option value="">Choose user</option>
+                                    {% for c in choices %}
+                                        <option value="{{ c['id'] }}">{{ c['firstname'] }} {{ c['lastname'] }} — {{ c['email'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="err_userid"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="tJoinDate">Joining Date</label>
+                                <input type="date" class="form-control dark-select" id="tJoinDate" name="rental_joiningdate">
+                                <div class="field-error" id="err_rental_joiningdate"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="tFloor">Floor Type</label>
+                                <select class="form-select dark-select" id="tFloor" name="floortype">
+                                    <option value="">Select floor</option>
+                                    <option value="Ground">Ground Floor</option>
+                                    <option value="First">First Floor</option>
+                                    <option value="Second">Second Floor</option>
+                                    <option value="Third">Third Floor</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" class="form-control" id="tOccupation" name="occupation" placeholder="Occupation">
+                                    <label for="tOccupation"><i class="bi bi-briefcase me-1"></i>Occupation</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="number" min="1" class="form-control" id="tMembers" name="total_member" placeholder="Total members">
+                                    <label for="tMembers"><i class="bi bi-people me-1"></i>Total Members</label>
+                                </div>
+                                <div class="field-error" id="err_total_member"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="12" inputmode="numeric" class="form-control" id="tAadhar" name="aadharno" placeholder="Aadhaar number">
+                                    <label for="tAadhar"><i class="bi bi-fingerprint me-1"></i>Aadhaar Number</label>
+                                </div>
+                                <div class="field-error" id="err_aadharno"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="10" class="form-control text-uppercase" id="tPan" name="panno" placeholder="PAN number">
+                                    <label for="tPan"><i class="bi bi-credit-card-2-front me-1"></i>PAN Number</label>
+                                </div>
+                                <div class="field-error" id="err_panno"></div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-floating">
+                                    <textarea class="form-control" id="tAddress" name="aadhar_address" placeholder="Aadhaar address" style="height:48px"></textarea>
+                                    <label for="tAddress"><i class="bi bi-geo-alt me-1"></i>Aadhaar Address (as per card)</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-cloud-arrow-up me-1"></i>Documents</label>
+                        <div class="file-grid">
+                            <div class="file-field">
+                                <input type="file" id="fAgreement" name="rentagrement" accept=".pdf">
+                                <label for="fAgreement" class="pdf"><i class="bi bi-file-earmark-pdf"></i><span>Rent Agreement (PDF)</span></label>
+                                <div class="field-error" id="err_rentagrement"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="fAadharImg" name="aadharimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="fAadharImg"><i class="bi bi-file-earmark-image"></i><span>Aadhaar Image</span></label>
+                                <div class="field-error" id="err_aadharimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="fPanImg" name="panimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="fPanImg"><i class="bi bi-file-earmark-image"></i><span>PAN Image</span></label>
+                                <div class="field-error" id="err_panimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="fRentalImg" name="rentalimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="fRentalImg"><i class="bi bi-file-earmark-image"></i><span>Rental Image</span></label>
+                                <div class="field-error" id="err_rentalimage"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveTenantBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="tenantSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Tenant
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Rent Modal -->
+    <div class="modal fade" id="addRentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Record Rent Payment</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addRentForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="rentGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="filter-label" for="rentTenant">Tenant</label>
+                                <select class="form-select dark-select" id="rentTenant" name="rentalid">
+                                    {% for r in rentals %}
+                                        <option value="{{ r['id'] }}">{{ r['firstname'] }} {{ r['lastname'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="rentMonth">Rent Month</label>
+                                <select class="form-select dark-select" id="rentMonth" name="month"></select>
+                                <div class="field-error" id="errR_month"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" class="form-control" id="rentYear" name="year" placeholder="Year">
+                                    <label for="rentYear"><i class="bi bi-calendar3 me-1"></i>For Year</label>
+                                </div>
+                                <div class="field-error" id="errR_year"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" step="0.01" min="1" class="form-control" id="rentAmount" name="rentamount" placeholder="Monthly rent amount">
+                                    <label for="rentAmount"><i class="bi bi-currency-rupee me-1"></i>Rent Amount (₹)</label>
+                                </div>
+                                <div class="field-error" id="errR_rentamount"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveRentBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="rentSpinner"></span>
+                            <i class="bi bi-check-lg me-1"></i>Save Payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if me_type in [1, 2, 5] %}
+    <!-- Edit Tenant Modal -->
+    <div class="modal fade" id="editRentalModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Tenant — <span id="eTenantName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editRentalForm" novalidate>
+                    <input type="hidden" id="eRentalId" name="rental_id">
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editTenantGeneralError"></div>
+
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eJoinDate">Joining Date</label>
+                                <input type="date" class="form-control dark-select" id="eJoinDate" name="rental_joiningdate">
+                                <div class="field-error" id="errE_rental_joiningdate"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eFloor">Floor Type</label>
+                                <select class="form-select dark-select" id="eFloor" name="floortype">
+                                    <option value="">Select floor</option>
+                                    <option value="Ground">Ground Floor</option>
+                                    <option value="First">First Floor</option>
+                                    <option value="Second">Second Floor</option>
+                                    <option value="Third">Third Floor</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="number" min="1" class="form-control" id="eMembers" name="total_member" placeholder="Total members">
+                                    <label for="eMembers"><i class="bi bi-people me-1"></i>Total Members</label>
+                                </div>
+                                <div class="field-error" id="errE_total_member"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" class="form-control" id="eOccupation" name="occupation" placeholder="Occupation">
+                                    <label for="eOccupation"><i class="bi bi-briefcase me-1"></i>Occupation</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="12" inputmode="numeric" class="form-control" id="eAadhar" name="aadharno" placeholder="Aadhaar number">
+                                    <label for="eAadhar"><i class="bi bi-fingerprint me-1"></i>Aadhaar Number</label>
+                                </div>
+                                <div class="field-error" id="errE_aadharno"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="10" class="form-control text-uppercase" id="ePan" name="panno" placeholder="PAN number">
+                                    <label for="ePan"><i class="bi bi-credit-card-2-front me-1"></i>PAN Number</label>
+                                </div>
+                                <div class="field-error" id="errE_panno"></div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <div class="form-floating">
+                                <textarea class="form-control" id="eAddress" name="aadhar_address" placeholder="Aadhaar address" style="height:48px"></textarea>
+                                <label for="eAddress"><i class="bi bi-geo-alt me-1"></i>Aadhaar Address (as per card)</label>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-cloud-arrow-up me-1"></i>Documents <small class="fw-normal">(leave empty to keep the current file)</small></label>
+                        <div class="file-grid">
+                            <div class="file-field">
+                                <input type="file" id="eAgreement" name="rentagrement" accept=".pdf">
+                                <label for="eAgreement" class="pdf"><i class="bi bi-file-earmark-pdf"></i><span>Rent Agreement (PDF)</span></label>
+                                <small class="doc-status" id="curAgreement"></small>
+                                <div class="field-error" id="errE_rentagrement"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="eAadharImg" name="aadharimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="eAadharImg"><i class="bi bi-file-earmark-image"></i><span>Aadhaar Image</span></label>
+                                <small class="doc-status" id="curAadharImg"></small>
+                                <div class="field-error" id="errE_aadharimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="ePanImg" name="panimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="ePanImg"><i class="bi bi-file-earmark-image"></i><span>PAN Image</span></label>
+                                <small class="doc-status" id="curPanImg"></small>
+                                <div class="field-error" id="errE_panimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="eRentalImg" name="rentalimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="eRentalImg"><i class="bi bi-file-earmark-image"></i><span>Rental Image</span></label>
+                                <small class="doc-status" id="curRentalImg"></small>
+                                <div class="field-error" id="errE_rentalimage"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveTenantEditBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="tenantEditSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Correct Payment Modal -->
+    <div class="modal fade" id="editRentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Correct Payment</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editRentForm" novalidate>
+                    <input type="hidden" id="epId" name="payment_id">
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editRentGeneralError"></div>
+                        <div class="pay-audit mb-2" id="epAudit"></div>
+                        <div class="mb-2">
+                            <label class="filter-label" for="epTenant">Tenant</label>
+                            <input type="text" class="form-control dark-select" id="epTenant" readonly>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="epMonth">Rent Month</label>
+                                <select class="form-select dark-select" id="epMonth" name="month"></select>
+                                <div class="field-error" id="errP_month"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" class="form-control" id="epYear" name="year" placeholder="Year">
+                                    <label for="epYear"><i class="bi bi-calendar3 me-1"></i>For Year</label>
+                                </div>
+                                <div class="field-error" id="errP_year"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" step="0.01" min="1" class="form-control" id="epAmount" name="rentamount" placeholder="Monthly rent amount">
+                                    <label for="epAmount"><i class="bi bi-currency-rupee me-1"></i>Rent Amount (₹)</label>
+                                </div>
+                                <div class="field-error" id="errP_rentamount"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="savePaymentEditBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="paymentEditSpinner"></span>
+                            <i class="bi bi-check-lg me-1"></i>Update Payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tenant History Modal -->
+    <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i><span id="historyName">Tenant History</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="historyBody">
+                    <div class="empty-state"><i class="bi bi-hourglass-split"></i><p class="mb-0">Loading...</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const aadharRe = /^\d{12}$/;
+        const panRe = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+
+        function showToast(message, type) {
+            const area = document.getElementById('toastArea');
+            const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+            const el = document.createElement('div');
+            el.className = `app-toast ${type}`;
+            el.innerHTML = `<i class="bi ${icon}"></i><span></span>`;
+            el.querySelector('span').textContent = message;
+            area.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('hide-out');
+                setTimeout(() => el.remove(), 350);
+            }, 3500);
+        }
+
+        function fmtMoney(n) {
+            return '₹ ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        const CAN_EDIT = {{ 'true' if me_type in [1, 2, 5] else 'false' }};
+        let historyTenantName = '';
+        let historyTenantId = '';
+        const HISTORY_BASE = '{{ url_for("rental_payments", rental_id=0) }}';
+        const DELETE_PAYMENT_URL = '{{ url_for("delete_rent_payment") }}';
+
+        function makeModal(id) {
+            const el = document.getElementById(id);
+            try { return el ? new bootstrap.Modal(el) : null; } catch (err) { return null; }
+        }
+        const addTenantModal = makeModal('addTenantModal');
+        const addRentModal = makeModal('addRentModal');
+        const historyModal = makeModal('historyModal');
+        const editRentalModal = makeModal('editRentalModal');
+        const editRentModal = makeModal('editRentModal');
+
+        const tabTenants = document.getElementById('tabTenants');
+        const tabLedger = document.getElementById('tabLedger');
+        const tenantsPanel = document.getElementById('tenantsPanel');
+        const ledgerPanel = document.getElementById('ledgerPanel');
+
+        function activateTab(which) {
+            const tenants = which === 'tenants';
+            tabTenants.classList.toggle('active', tenants);
+            tabLedger.classList.toggle('active', !tenants);
+            tenantsPanel.classList.toggle('d-none', !tenants);
+            ledgerPanel.classList.toggle('d-none', tenants);
+        }
+        tabTenants.addEventListener('click', () => activateTab('tenants'));
+        tabLedger.addEventListener('click', () => activateTab('ledger'));
+        document.getElementById('navLedger')?.addEventListener('click', e => { e.preventDefault(); activateTab('ledger'); });
+
+        const tenantSearch = document.getElementById('tenantSearch');
+        if (tenantSearch) {
+            const collectRows = panelId => {
+                const rows = Array.from(document.querySelectorAll('#' + panelId + ' tbody tr'));
+                const emptyRow = rows.find(r => r.querySelector('.empty-state'));
+                return {
+                    dataRows: rows.filter(r => r !== emptyRow)
+                        .map(row => ({ row, hay: row.textContent.toLowerCase() })),
+                    emptyRow,
+                    defaultMsg: emptyRow ? emptyRow.querySelector('p').textContent : ''
+                };
+            };
+            const tenantRows = collectRows('tenantsPanel');
+            const ledgerRows = collectRows('ledgerPanel');
+            const searchScope = () => tabTenants.classList.contains('active') ? tenantRows : ledgerRows;
+            let scheduled = false;
+
+            const applyTenantFilter = () => {
+                const { dataRows, emptyRow, defaultMsg } = searchScope();
+                const q = tenantSearch.value.trim().toLowerCase();
+                let visible = 0;
+                dataRows.forEach(({ row, hay }) => {
+                    const match = !q || hay.includes(q);
+                    row.style.display = match ? '' : 'none';
+                    if (match) visible++;
+                });
+                if (emptyRow) {
+                    const p = emptyRow.querySelector('p');
+                    if (!q) {
+                        p.textContent = defaultMsg;
+                        emptyRow.classList.toggle('d-none', dataRows.length > 0);
+                    } else if (visible === 0) {
+                        p.textContent = 'No records match your search.';
+                        emptyRow.classList.remove('d-none');
+                    } else {
+                        emptyRow.classList.add('d-none');
+                    }
+                }
+            };
+
+            tenantSearch.addEventListener('input', function () {
+                if (scheduled) return;
+                scheduled = true;
+                requestAnimationFrame(() => {
+                    scheduled = false;
+                    applyTenantFilter();
+                });
+            });
+
+            // re-apply the current query when switching tabs
+            tabTenants.addEventListener('click', () => applyTenantFilter());
+            tabLedger.addEventListener('click', () => applyTenantFilter());
+        }
+
+        document.querySelectorAll('.file-field input[type=file]').forEach(inp => {
+            const span = inp.parentElement.querySelector('label span');
+            inp.dataset.hint = span.textContent;
+            inp.addEventListener('change', () => {
+                if (inp.files.length > 0) {
+                    span.textContent = inp.files[0].name;
+                    inp.parentElement.classList.add('has-file');
+                } else {
+                    span.textContent = inp.dataset.hint;
+                    inp.parentElement.classList.remove('has-file');
+                }
+            });
+        });
+
+        const tenantFields = ['userid', 'aadharno', 'panno', 'total_member', 'rental_joiningdate',
+                              'rentagrement', 'aadharimage', 'panimage', 'rentalimage'];
+        const tenantInputMap = {
+            userid: 'tUser', aadharno: 'tAadhar', panno: 'tPan', total_member: 'tMembers',
+            rental_joiningdate: 'tJoinDate', rentagrement: 'fAgreement',
+            aadharimage: 'fAadharImg', panimage: 'fPanImg', rentalimage: 'fRentalImg'
+        };
+        const tenantKeyById = Object.fromEntries(Object.entries(tenantInputMap).map(([k, v]) => [v, k]));
+
+        function setTError(name, msg) {
+            const box = document.getElementById('err_' + name);
+            if (box) box.textContent = msg || '';
+            const input = document.getElementById(tenantInputMap[name]);
+            if (input && !['userid', 'rental_joiningdate'].includes(name)) {
+                input.classList.toggle('invalid-input', !!msg);
+            }
+        }
+
+        function clearTenantErrors() {
+            tenantFields.forEach(f => setTError(f, ''));
+            const gen = document.getElementById('tenantGeneralError');
+            gen.classList.add('d-none');
+            gen.textContent = '';
+        }
+
+        function showTenantGen(msg) {
+            const gen = document.getElementById('tenantGeneralError');
+            gen.textContent = msg;
+            gen.classList.remove('d-none');
+        }
+
+        document.getElementById('openTenantModal')?.addEventListener('click', e => {
+            e.preventDefault();
+            clearTenantErrors();
+            if (addTenantModal) addTenantModal.show();
+        });
+
+        function validateTenantForm() {
+            clearTenantErrors();
+            let ok = true;
+
+            const userid = document.getElementById('tUser').value;
+            const aadhar = document.getElementById('tAadhar').value.trim();
+            const pan = document.getElementById('tPan').value.trim().toUpperCase();
+            const members = document.getElementById('tMembers').value;
+            const join = document.getElementById('tJoinDate').value;
+
+            if (!userid) { setTError('userid', 'Please select a tenant user.'); ok = false; }
+
+            if (!aadhar) { setTError('aadharno', 'Aadhaar number is required.'); ok = false; }
+            else if (!aadharRe.test(aadhar)) { setTError('aadharno', 'Aadhaar must be exactly 12 digits.'); ok = false; }
+
+            if (pan && !panRe.test(pan)) { setTError('panno', 'PAN format must be ABCDE1234F.'); ok = false; }
+
+            if (!members || parseInt(members, 10) < 1) { setTError('total_member', 'At least 1 member is required.'); ok = false; }
+
+            if (!join) { setTError('rental_joiningdate', 'Joining date is required.'); ok = false; }
+
+            const agree = document.getElementById('fAgreement').files;
+            if (agree.length > 0 && !agree[0].name.toLowerCase().endsWith('.pdf')) {
+                setTError('rentagrement', 'Rent agreement must be a PDF file.'); ok = false;
+            }
+            ['fAadharImg', 'fPanImg', 'fRentalImg'].forEach(id => {
+                const f = document.getElementById(id).files;
+                if (f.length > 0 && !/\.(png|jpe?g|webp)$/i.test(f[0].name)) {
+                    setTError(tenantKeyById[id], 'Only PNG/JPG/WEBP allowed.');
+                    ok = false;
+                }
+            });
+
+            return ok;
+        }
+
+        ['tUser', 'tAadhar', 'tPan', 'tMembers', 'tJoinDate'].forEach(id => {
+            const el = document.getElementById(id);
+            const key = tenantKeyById[id];
+            if (!el || !key) return;
+            el.addEventListener('input', () => setTError(key, ''));
+            el.addEventListener('change', () => setTError(key, ''));
+        });
+
+        function submitJson(form, url, modal, btnId, spinnerId, errSet, errGeneral, failMsg) {
+            const btn = document.getElementById(btnId);
+            const spinner = document.getElementById(spinnerId);
+            btn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            fetch(url, { method: 'POST', body: new FormData(form) })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+
+                    if (data.success) {
+                        if (modal) modal.hide();
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        if (data.errors) Object.entries(data.errors).forEach(([k, v]) => errSet(k, v));
+                        const gen = document.getElementById(errGeneral);
+                        gen.textContent = data.message || failMsg;
+                        gen.classList.remove('d-none');
+                        showToast(data.message || failMsg, 'error');
+                    }
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'))
+                .finally(() => {
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                });
+        }
+
+        document.getElementById('addTenantForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateTenantForm()) return;
+            submitJson(this, '{{ url_for("create_rental") }}', addTenantModal,
+                'saveTenantBtn', 'tenantSpinner', setTError, 'tenantGeneralError', 'Could not save the tenant.');
+        });
+
+        const rentYearInput = document.getElementById('rentYear');
+        const rentMonthSel = document.getElementById('rentMonth');
+        const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+        function fillMonthSelect(sel) {
+            if (!sel) return;
+            sel.innerHTML = '';
+            MONTH_LABELS.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = String(idx + 1);
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        }
+        fillMonthSelect(rentMonthSel);
+        fillMonthSelect(document.getElementById('epMonth'));
+        rentYearInput.value = new Date().getFullYear();
+
+        function setRError(name, msg) {
+            const box = document.getElementById('errR_' + name);
+            if (box) box.textContent = msg || '';
+        }
+
+        function openAddRent(btn) {
+            setRError('month', '');
+            setRError('year', '');
+            setRError('rentamount', '');
+            const gen = document.getElementById('rentGeneralError');
+            gen.classList.add('d-none');
+            document.getElementById('rentTenant').value = btn.dataset.id;
+            rentMonthSel.value = String(new Date().getMonth() + 1);
+            rentYearInput.value = new Date().getFullYear();
+            document.getElementById('rentAmount').value = '';
+            if (addRentModal) addRentModal.show();
+        }
+
+        document.getElementById('addRentForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            setRError('month', '');
+            setRError('year', '');
+            setRError('rentamount', '');
+            let ok = true;
+
+            if (!rentMonthSel.value) { setRError('month', 'Please select the rent month.'); ok = false; }
+            const year = parseInt(rentYearInput.value, 10);
+            const amount = parseFloat(document.getElementById('rentAmount').value);
+
+            if (!rentYearInput.value || isNaN(year) || year < 2000 || year > 2100) {
+                setRError('year', 'Enter a valid year (2000-2100).'); ok = false;
+            }
+            if (isNaN(amount) || amount <= 0) {
+                setRError('rentamount', 'Enter a valid amount greater than 0.'); ok = false;
+            }
+            if (!ok) return;
+
+            submitJson(this, '{{ url_for("add_rent_payment") }}', addRentModal,
+                'saveRentBtn', 'rentSpinner', setRError, 'rentGeneralError', 'Could not record payment.');
+        });
+
+        function hEl(tag, cls, text) {
+            const n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined) n.textContent = text;
+            return n;
+        }
+
+        function docChip(href, icon, label, cls) {
+            const a = document.createElement('a');
+            a.href = '/static/' + href;
+            a.target = '_blank';
+            a.className = 'doc-chip ' + (cls || '');
+            const i = hEl('i', 'bi ' + icon);
+            const s = hEl('span', '', label);
+            a.appendChild(i);
+            a.appendChild(s);
+            return a;
+        }
+
+        function infoItem(icon, label, value, mono) {
+            const wrap = hEl('div', 'hi-item');
+            const lab = hEl('div', 'hi-label');
+            const ic = hEl('i', 'bi ' + icon + ' me-1');
+            lab.appendChild(ic);
+            lab.appendChild(document.createTextNode(label));
+            const val = hEl('div', 'hi-value' + (mono ? ' mono' : ''), value || '—');
+            wrap.appendChild(lab);
+            wrap.appendChild(val);
+            return wrap;
+        }
+
+        const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        let historySeq = 0;
+
+        function openHistory(btn) {
+            historyTenantName = btn.dataset.name;
+            historyTenantId = btn.dataset.id;
+            document.getElementById('historyName').textContent = btn.dataset.name + ' — History';
+            loadHistory(btn.dataset.id);
+        }
+
+        function loadHistory(rentalId) {
+            const seq = ++historySeq;
+            const body = document.getElementById('historyBody');
+            body.innerHTML = '<div class="empty-state"><i class="bi bi-hourglass-split"></i><p class="mb-0">Loading...</p></div>';
+            if (historyModal) historyModal.show();
+
+            fetch(HISTORY_BASE.replace('/payments/0', '/payments/' + rentalId))
+                .then(res => res.json())
+                .then(data => {
+                    if (seq !== historySeq) return;
+                    if (!data.success) {
+                        body.innerHTML = '';
+                        const es = hEl('div', 'empty-state');
+                        es.appendChild(hEl('i', 'bi bi-exclamation-triangle'));
+                        es.appendChild(hEl('p', 'mb-0', data.message || 'Could not load history.'));
+                        body.appendChild(es);
+                        return;
+                    }
+                    body.innerHTML = '';
+                    const t = data.tenant;
+
+                    const info = hEl('div', 'history-info');
+                    info.appendChild(infoItem('bi-fingerprint', 'Aadhaar No', t.aadharno, true));
+                    info.appendChild(infoItem('bi-credit-card-2-front', 'PAN No', t.panno, true));
+                    info.appendChild(infoItem('bi-layers', 'Floor Type', t.floortype));
+                    info.appendChild(infoItem('bi-briefcase', 'Occupation', t.occupation));
+                    info.appendChild(infoItem('bi-people', 'Total Members', String(t.total_member)));
+                    info.appendChild(infoItem('bi-calendar-event', 'Joining Date', t.joined_label || ''));
+                    body.appendChild(info);
+
+                    if (t.aadhar_address) {
+                        const addr = hEl('div', 'history-address');
+                        addr.appendChild(hEl('i', 'bi bi-geo-alt me-1'));
+                        addr.appendChild(document.createTextNode(t.aadhar_address));
+                        body.appendChild(addr);
+                    }
+
+                    const docs = hEl('div', 'doc-chips');
+                    if (t.rentagrement) docs.appendChild(docChip(t.rentagrement, 'bi-file-earmark-pdf-fill', 'Rent Agreement', 'pdf'));
+                    if (t.aadharimage) docs.appendChild(docChip(t.aadharimage, 'bi-file-earmark-image-fill', 'Aadhaar Image'));
+                    if (t.panimage) docs.appendChild(docChip(t.panimage, 'bi-file-earmark-image-fill', 'PAN Image'));
+                    if (t.rentalimage) docs.appendChild(docChip(t.rentalimage, 'bi-file-earmark-image-fill', 'Rental Image'));
+                    if (docs.children.length > 0) body.appendChild(docs);
+
+                    const list = hEl('div', 'pay-list');
+                    let total = 0;
+                    if (data.payments.length === 0) {
+                        const emp = hEl('div', 'empty-state');
+                        emp.appendChild(hEl('i', 'bi bi-inbox'));
+                        emp.appendChild(hEl('p', 'mb-0', 'No payments recorded yet.'));
+                        list.appendChild(emp);
+                    }
+                    data.payments.forEach(p => {
+                        total += Number(p.rentamount);
+                        const item = hEl('div', 'pay-item');
+                        item.appendChild(hEl('span', 'pay-year',
+                            p.month ? (MONTH_SHORT[p.month - 1] + ' ' + p.year) : String(p.year)));
+                        const mid = hEl('div', 'pay-mid');
+                        mid.appendChild(hEl('span', 'pay-receipt mono', '#RD-' + String(p.id).padStart(4, '0')));
+                        mid.appendChild(hEl('small', 'pay-date', 'Added: ' + p.paid_on));
+                        if (p.updated_on) {
+                            mid.appendChild(hEl('small', 'pay-date pay-updated', 'Updated: ' + p.updated_on));
+                            if (p.update_note) {
+                                mid.appendChild(hEl('small', 'pay-note', p.update_note));
+                            }
+                        }
+                        item.appendChild(mid);
+                        item.appendChild(hEl('span', 'pay-amt money green', fmtMoney(p.rentamount)));
+                        if (CAN_EDIT) {
+                            const eb = hEl('button', 'pay-edit js-edit-payment');
+                            eb.type = 'button';
+                            eb.title = 'Correct this payment';
+                            eb.dataset.id = p.id;
+                            eb.dataset.month = p.month || '';
+                            eb.dataset.year = p.year;
+                            eb.dataset.amount = p.rentamount;
+                            eb.dataset.added = p.paid_on;
+                            eb.dataset.updated = p.updated_on || '';
+                            eb.dataset.note = p.update_note || '';
+                            eb.appendChild(hEl('i', 'bi bi-pencil-square'));
+                            item.appendChild(eb);
+
+                            const db = hEl('button', 'pay-edit pay-del js-delete-payment');
+                            db.type = 'button';
+                            db.title = 'Delete this payment';
+                            db.dataset.id = p.id;
+                            db.appendChild(hEl('i', 'bi bi-trash3'));
+                            item.appendChild(db);
+                        }
+                        list.appendChild(item);
+                    });
+                    body.appendChild(list);
+
+                    if (data.payments.length > 0) {
+                        const foot = hEl('div', 'pay-total');
+                        foot.appendChild(hEl('span', '', 'Total Collected'));
+                        foot.appendChild(hEl('strong', 'money', fmtMoney(total)));
+                        body.appendChild(foot);
+                    }
+                })
+                .catch(() => {
+                    if (seq !== historySeq) return;
+                    body.innerHTML = '';
+                    const es = hEl('div', 'empty-state');
+                    es.appendChild(hEl('i', 'bi bi-wifi-off'));
+                    es.appendChild(hEl('p', 'mb-0', 'Network error while loading history.'));
+                    body.appendChild(es);
+                });
+        }
+
+        const editTenantInputMap = {
+            aadharno: 'eAadhar', panno: 'ePan', total_member: 'eMembers', rental_joiningdate: 'eJoinDate',
+            rentagrement: 'eAgreement', aadharimage: 'eAadharImg', panimage: 'ePanImg', rentalimage: 'eRentalImg'
+        };
+        const editTenantKeyById = Object.fromEntries(Object.entries(editTenantInputMap).map(([k, v]) => [v, k]));
+
+        function setETError(name, msg) {
+            const box = document.getElementById('errE_' + name);
+            if (box) box.textContent = msg || '';
+            const input = document.getElementById(editTenantInputMap[name]);
+            if (input && !['userid', 'rental_joiningdate'].includes(name)) {
+                input.classList.toggle('invalid-input', !!msg);
+            }
+        }
+
+        function clearEditTenantErrors() {
+            Object.keys(editTenantInputMap).forEach(k => setETError(k, ''));
+            const gen = document.getElementById('editTenantGeneralError');
+            gen.classList.add('d-none');
+            gen.textContent = '';
+        }
+
+        function openEditRental(btn) {
+            clearEditTenantErrors();
+            document.getElementById('eRentalId').value = btn.dataset.id;
+            document.getElementById('eTenantName').textContent = btn.dataset.name;
+            document.getElementById('eJoinDate').value = btn.dataset.joining || '';
+            document.getElementById('eFloor').value = btn.dataset.floor || '';
+            document.getElementById('eOccupation').value = btn.dataset.occupation || '';
+            document.getElementById('eMembers').value = btn.dataset.members || '';
+            document.getElementById('eAadhar').value = btn.dataset.aadhar || '';
+            document.getElementById('ePan').value = btn.dataset.pan || '';
+            document.getElementById('eAddress').value = btn.dataset.address || '';
+            [['curAgreement', btn.dataset.hasAgree], ['curAadharImg', btn.dataset.hasAadharimg],
+             ['curPanImg', btn.dataset.hasPanimg], ['curRentalImg', btn.dataset.hasRentalimg]]
+                .forEach(([id, flag]) => {
+                    const el = document.getElementById(id);
+                    el.textContent = flag === '1' ? '\u2713 On file' : 'Not uploaded yet';
+                    el.classList.toggle('ok', flag === '1');
+                });
+            ['eAgreement', 'eAadharImg', 'ePanImg', 'eRentalImg'].forEach(id => { document.getElementById(id).value = ''; });
+            if (editRentalModal) editRentalModal.show();
+        }
+
+        ['eAadhar', 'ePan', 'eMembers', 'eJoinDate'].forEach(id => {
+            const el = document.getElementById(id);
+            const key = editTenantKeyById[id];
+            if (!el || !key) return;
+            el.addEventListener('input', () => setETError(key, ''));
+            el.addEventListener('change', () => setETError(key, ''));
+        });
+
+        function validateEditTenantForm() {
+            clearEditTenantErrors();
+            let ok = true;
+
+            const aadhar = document.getElementById('eAadhar').value.trim();
+            const pan = document.getElementById('ePan').value.trim().toUpperCase();
+            const members = document.getElementById('eMembers').value;
+            const join = document.getElementById('eJoinDate').value;
+
+            if (!aadharRe.test(aadhar)) { setETError('aadharno', 'Aadhaar number must be exactly 12 digits.'); ok = false; }
+            if (pan && !panRe.test(pan)) { setETError('panno', 'PAN format must be ABCDE1234F.'); ok = false; }
+            if (!members || parseInt(members, 10) < 1) { setETError('total_member', 'Total members must be at least 1.'); ok = false; }
+            if (!join) { setETError('rental_joiningdate', 'Joining date is required.'); ok = false; }
+
+            const agree = document.getElementById('eAgreement').files;
+            if (agree.length > 0 && !agree[0].name.toLowerCase().endsWith('.pdf')) {
+                setETError('rentagrement', 'Rent agreement must be a PDF file.'); ok = false;
+            }
+            ['eAadharImg', 'ePanImg', 'eRentalImg'].forEach(id => {
+                const f = document.getElementById(id).files;
+                if (f.length > 0 && !/\.(png|jpe?g|webp)$/i.test(f[0].name)) {
+                    setETError(editTenantKeyById[id], 'Only PNG/JPG/WEBP allowed.');
+                    ok = false;
+                }
+            });
+
+            return ok;
+        }
+
+        document.getElementById('editRentalForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateEditTenantForm()) return;
+
+            submitJson(this, '{{ url_for("update_rental") }}', editRentalModal,
+                'saveTenantEditBtn', 'tenantEditSpinner', setETError, 'editTenantGeneralError', 'Could not update the tenant.');
+        });
+
+        function setPError(name, msg) {
+            const box = document.getElementById('errP_' + name);
+            if (box) box.textContent = msg || '';
+        }
+
+        function openEditPayment(pb) {
+            setPError('month', ''); setPError('year', ''); setPError('rentamount', '');
+            const gen = document.getElementById('editRentGeneralError');
+            gen.classList.add('d-none');
+            gen.textContent = '';
+            document.getElementById('epId').value = pb.dataset.id;
+            document.getElementById('epTenant').value = historyTenantName;
+            document.getElementById('epMonth').value = pb.dataset.month || '';
+            document.getElementById('epYear').value = pb.dataset.year;
+            document.getElementById('epAmount').value = pb.dataset.amount;
+            const audit = document.getElementById('epAudit');
+            let txt = 'Added: ' + (pb.dataset.added || '-');
+            if (pb.dataset.updated) {
+                txt += ' \u00b7 Corrected: ' + pb.dataset.updated;
+                if (pb.dataset.note) txt += ' \u2014 ' + pb.dataset.note;
+            }
+            audit.textContent = txt;
+            audit.classList.remove('d-none');
+            if (historyModal) historyModal.hide();
+            setTimeout(() => { if (editRentModal) editRentModal.show(); }, 200);
+        }
+
+        document.getElementById('editRentForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            setPError('month', ''); setPError('year', ''); setPError('rentamount', '');
+            let ok = true;
+
+            const monthSel = document.getElementById('epMonth');
+            const yearVal = parseInt(document.getElementById('epYear').value, 10);
+            const amountVal = parseFloat(document.getElementById('epAmount').value);
+
+            if (!monthSel.value) { setPError('month', 'Please select the rent month.'); ok = false; }
+            if (isNaN(yearVal) || yearVal < 2000 || yearVal > 2100) {
+                setPError('year', 'Enter a valid year (2000-2100).'); ok = false;
+            }
+            if (isNaN(amountVal) || amountVal <= 0) {
+                setPError('rentamount', 'Enter a valid amount greater than 0.'); ok = false;
+            }
+            if (!ok) return;
+
+            submitJson(this, '{{ url_for("update_rent_payment") }}', editRentModal,
+                'savePaymentEditBtn', 'paymentEditSpinner', setPError, 'editRentGeneralError', 'Could not update the payment.');
+        });
+
+        function deletePayment(pb) {
+            const receipt = '#RD-' + String(pb.dataset.id).padStart(4, '0');
+            if (!window.confirm('Delete payment ' + receipt + ' for ' + historyTenantName +
+                                '? This cannot be undone.')) return;
+            pb.disabled = true;
+
+            const fd = new FormData();
+            fd.append('payment_id', pb.dataset.id);
+            fetch(DELETE_PAYMENT_URL, { method: 'POST', body: fd })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+                    showToast(data.message || (data.success ? 'Payment deleted successfully.'
+                                                            : 'Could not delete the payment.'),
+                              data.success ? 'success' : 'error');
+                    if (data.success) {
+                        setTimeout(() => window.location.reload(), 900);
+                    }
+                })
+                .catch(() => {
+                    pb.disabled = false;
+                    showToast('Network error. Please try again.', 'error');
+                });
+        }
+
+        document.addEventListener('click', e => {
+            const addBtn = e.target.closest('.js-add-rent');
+            if (addBtn) { openAddRent(addBtn); return; }
+
+            const histBtn = e.target.closest('.js-history');
+            if (histBtn) { openHistory(histBtn); return; }
+
+            if (CAN_EDIT) {
+                const er = e.target.closest('.js-edit-rental');
+                if (er) { openEditRental(er); return; }
+                const ep = e.target.closest('.js-edit-payment');
+                if (ep) { openEditPayment(ep); return; }
+                const dp = e.target.closest('.js-delete-payment');
+                if (dp) deletePayment(dp);
+            }
+        });
+    </script>
+</body>
+</html>

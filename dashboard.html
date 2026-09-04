@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDM | Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="app-shell dash-page">
+    <!-- Header: stays fixed, never scrolls -->
+    <nav class="navbar-custom">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand-custom">
+                    <span class="brand-icon"><i class="bi bi-list"></i></span>
+                    <span> | PDM</span>
+                </a>
+
+                <div class="panel-nav">
+                    <a href="{{ url_for('rental_management') }}" class="btn-rental">
+                        <i class="bi bi-building"></i>Rental Management
+                    </a>
+                    <a href="{{ url_for('rides_management') }}" class="btn-rides">
+                        <i class="bi bi-car-front"></i>Rides Management
+                    </a>
+                </div>
+
+                <div class="d-flex align-items-center gap-3">
+                    <div class="user-greeting">
+                        <span class="user-avatar-sm"><i class="bi bi-person-fill"></i></span>
+                        Hello, {{ session['firstname'] }}
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">
+                        <i class="bi bi-box-arrow-right me-2"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-layout container-fluid px-3 px-lg-4">
+        <!-- Left Panel: stays fixed, never scrolls -->
+        <aside class="sidebar-panel offcanvas-lg offcanvas-start" tabindex="-1" id="filterSidebar" aria-label="Filters panel">
+            <div class="offcanvas-header d-lg-none pb-2">
+                <h5 class="offcanvas-title text-white mb-0"><i class="bi bi-funnel me-2"></i>Filters</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body p-0">
+                <div class="sidebar-inner">
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-funnel me-2"></i>Filters</h6>
+                        <form method="get" action="{{ url_for('dashboard') }}" id="filterForm">
+                            <label class="filter-label" for="filterType">User Type</label>
+                            <select class="form-select dark-select" id="filterType" name="usertype">
+                                <option value="" {% if not filter_type %}selected{% endif %}>All Types</option>
+                                {% for t in types %}
+                                    <option value="{{ t['id'] }}" {% if filter_type == t['id']|string %}selected{% endif %}>{{ t['typename'] }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <label class="filter-label" for="filterYear">Year</label>
+                            <select class="form-select dark-select" id="filterYear" name="year">
+                                <option value="" {% if not filter_year %}selected{% endif %}>All Years</option>
+                                {% for yr in years %}
+                                    <option value="{{ yr }}" {% if filter_year == yr|string %}selected{% endif %}>{{ yr }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <button type="submit" class="btn btn-apply-filter w-100 mt-3">
+                                <i class="bi bi-check2-circle me-1"></i>Apply Filters
+                            </button>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-reset-filter w-100 mt-2">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                            </a>
+                        </form>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-graph-up me-2"></i>Overview</h6>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-people me-2"></i>Total Users</span>
+                            <span class="stat-value">{{ stats.total }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-check-circle me-2"></i>Active</span>
+                            <span class="stat-value text-green">{{ stats.active }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-x-circle me-2"></i>Inactive</span>
+                            <span class="stat-value text-red">{{ stats.inactive }}</span>
+                        </div>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-link-45deg me-2"></i>Quick Links</h6>
+                        <div class="side-links">
+                            <a href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i>Dashboard</a>
+                            <a href="{{ url_for('rides_management') }}"><i class="bi bi-car-front"></i>Rides Management</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- User Details: the ONLY area that scrolls -->
+        <main class="main-panel">
+            <button class="btn btn-filter-toggle d-lg-none mb-3" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterSidebar">
+                <i class="bi bi-funnel me-1"></i>Filters
+            </button>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }}">{{ message }}</div>
+                {% endfor %}
+            {% endwith %}
+
+            <div class="dash-profile">
+                <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
+                <div>
+                    <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
+                    <div class="dp-email">{{ session['email'] }}</div>
+                </div>
+                <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
+                    <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name if me_type_name else ('Admin' if me_type == 1 else 'User') }}
+                </span>
+            </div>
+
+            <div class="users-card">
+                <div class="users-head">
+                    <div class="users-head-right">
+                        <input type="text" id="userSearch" class="table-search" placeholder="Search users..." autocomplete="off">
+                        {% if me_type == 1 %}
+                        <div class="type-add-group">
+                            <input type="text" id="newTypeName" class="table-search type-input" placeholder="New user type..." maxlength="30" autocomplete="off">
+                            <button type="button" class="btn-add-type" id="addTypeBtn"><i class="bi bi-tag"></i>Add</button>
+                        </div>
+                        {% endif %}
+                        {% if me_type in [1, 2] %}
+                        <a href="{{ url_for('add_user_page') }}" class="btn-add-user"><i class="bi bi-person-plus"></i>Add User</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table users-table align-middle">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Gender</th>
+                                <th>Type</th>
+                                <th>Joined</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if users %}
+                                {% for u in users %}
+                                    <tr>
+                                        <td class="cell-id">{{ loop.index }}</td>
+                                        <td>
+                                            <div class="user-cell">
+                                                <span class="user-avatar-sm2">{{ u['firstname'][0]|upper }}{{ u['lastname'][0]|upper }}</span>
+                                                <span class="user-name">{{ u['firstname'] }} {{ u['lastname'] }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="cell-muted">{{ u['email'] }}</td>
+                                        <td class="cell-muted">{{ u['phone'] }}</td>
+                                        <td>
+                                            {% if u['gender'] == 'Male' %}
+                                                <span class="badge-soft cyan"><i class="bi bi-gender-male"></i>Male</span>
+                                            {% elif u['gender'] == 'Female' %}
+                                                <span class="badge-soft pink"><i class="bi bi-gender-female"></i>Female</span>
+                                            {% elif u['gender'] == 'Other' %}
+                                                <span class="badge-soft indigo"><i class="bi bi-gender-trans"></i>Other</span>
+                                            {% else %}
+                                                <span class="badge-soft gray"><i class="bi bi-dash-circle"></i>N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% set tname = u['type_name'] or ('Admin' if u['istype'] == 1 else 'User') %}
+                                            <span class="badge-soft {{ 'indigo' if u['istype'] == 1 else 'cyan' }}">
+                                                <i class="bi {{ 'bi-shield-lock' if u['istype'] == 1 else 'bi-person' }}"></i>{{ tname }}
+                                            </span>
+                                        </td>
+                                        <td class="cell-muted">{{ u['created_at'].strftime('%d %b %Y') }}</td>
+                                        <td>
+                                            {% if u['isactive'] %}
+                                                <span class="badge-soft green"><i class="bi bi-check-circle"></i></span>
+                                            {% else %}
+                                                <span class="badge-soft red"><i class="bi bi-x-circle"></i></span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="d-inline-flex justify-content-center gap-2 actions-cell">
+                                                {% if me_type in [1, 5] %}
+                                                <button type="button"
+                                                        class="btn-action edit js-edit-user"
+                                                        data-id="{{ u['id'] }}"
+                                                        data-firstname="{{ u['firstname'] }}"
+                                                        data-lastname="{{ u['lastname'] }}"
+                                                        data-email="{{ u['email'] }}"
+                                                        data-phone="{{ u['phone'] }}"
+                                                        data-gender="{{ u['gender'] or '' }}"
+                                                        data-istype="{{ u['istype'] }}">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </button>
+                                                {% if u['isactive'] %}
+                                                    <button type="button" class="btn-action danger js-toggle-user" data-id="{{ u['id'] }}" data-active="true">
+                                                        <i class="bi bi-slash-circle"></i>
+                                                    </button>
+                                                {% else %}
+                                                    <button type="button" class="btn-action success js-toggle-user" data-id="{{ u['id'] }}" data-active="false">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                    </button>
+                                                {% endif %}
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="9">
+                                        <div class="empty-state">
+                                            <i class="bi bi-inbox"></i>
+                                            <p class="mb-0">No users found for the selected filters.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalTitle"><i class="bi bi-pencil-square me-2"></i>Edit User</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editUserForm" novalidate>
+                    <div class="modal-body">
+                        <input type="hidden" id="editUserId" name="id">
+
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editGeneralError"></div>
+
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="text" class="form-control" id="editFirstname" name="firstname" placeholder="First name" value="">
+                                    <label for="editFirstname"><i class="bi bi-person me-1"></i>First Name</label>
+                                </div>
+                                <div class="field-error" id="err_firstname"></div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="text" class="form-control" id="editLastname" name="lastname" placeholder="Last name" value="">
+                                    <label for="editLastname"><i class="bi bi-person me-1"></i>Last Name</label>
+                                </div>
+                                <div class="field-error" id="err_lastname"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="email" class="form-control" id="editEmail" name="email" placeholder="Email" value="">
+                                    <label for="editEmail"><i class="bi bi-envelope me-1"></i>Email Address</label>
+                                </div>
+                                <div class="field-error" id="err_email"></div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="tel" class="form-control" id="editPhone" name="phone" placeholder="Phone" value="">
+                                    <label for="editPhone"><i class="bi bi-telephone me-1"></i>Phone Number</label>
+                                </div>
+                                <div class="field-error" id="err_phone"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 d-none" id="passwordFields">
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="password" class="form-control" id="editPassword" name="password" placeholder="Password" value="">
+                                    <label for="editPassword"><i class="bi bi-key me-1"></i>Password</label>
+                                </div>
+                                <div class="field-error" id="err_password"></div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="password" class="form-control" id="editConfirmPassword" name="confirm_password" placeholder="Confirm password" value="">
+                                    <label for="editConfirmPassword"><i class="bi bi-key-fill me-1"></i>Confirm Password</label>
+                                </div>
+                                <div class="field-error" id="err_confirm_password"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label class="filter-label" for="editGender">Gender</label>
+                                <select class="form-select dark-select" id="editGender" name="gender">
+                                    <option value="">Select gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <div class="field-error" id="err_gender"></div>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="filter-label" for="editIstype">User Type</label>
+                            <select class="form-select dark-select" id="editIstype" name="istype">
+                                <option value="">Select user type</option>
+                                {% for t in types %}
+                                    <option value="{{ t['id'] }}">{{ t['typename'] }}</option>
+                                {% endfor %}
+                            </select>
+                                <div class="field-error" id="err_istype"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveUserBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="saveSpinner"></span>
+                            <i class="bi bi-save me-1" id="saveIcon"></i><span id="saveBtnLabel">Save Changes</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toasts -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const phoneRe = /^\d{10}$/;
+
+        // ---------- Toasts ----------
+        function showToast(message, type) {
+            const area = document.getElementById('toastArea');
+            const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+            const el = document.createElement('div');
+            el.className = `app-toast ${type}`;
+            el.innerHTML = `<i class="bi ${icon}"></i><span></span>`;
+            el.querySelector('span').textContent = message;
+            area.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('hide-out');
+                setTimeout(() => el.remove(), 350);
+            }, 3500);
+        }
+
+        // ---------- Live user search ----------
+        const userSearch = document.getElementById('userSearch');
+        if (userSearch) {
+            const srows = Array.from(document.querySelectorAll('.users-table tbody tr'));
+            const emptyRow = srows.find(r => r.querySelector('.empty-state'));
+            const dataRows = srows.filter(r => r !== emptyRow);
+
+            userSearch.addEventListener('input', function () {
+                const q = this.value.trim().toLowerCase();
+                let visible = 0;
+                dataRows.forEach(row => {
+                    const match = row.textContent.toLowerCase().includes(q);
+                    row.style.display = match ? '' : 'none';
+                    if (match) visible++;
+                });
+
+                if (emptyRow) {
+                    const p = emptyRow.querySelector('p');
+                    if (!q) {
+                        p.textContent = 'No users found for the selected filters.';
+                        emptyRow.classList.toggle('d-none', dataRows.length > 0);
+                    } else if (visible === 0) {
+                        p.textContent = 'No users match your search.';
+                        emptyRow.classList.remove('d-none');
+                    } else {
+                        emptyRow.classList.add('d-none');
+                    }
+                }
+            });
+        }
+
+        // ---------- Add user type ----------
+        const addTypeBtn = document.getElementById('addTypeBtn');
+        if (addTypeBtn) {
+            addTypeBtn.addEventListener('click', function () {
+                const nameInput = document.getElementById('newTypeName');
+                const name = nameInput.value.trim();
+                if (name.length < 2 || name.length > 30) {
+                    showToast('Type name must be 2-30 characters.', 'error');
+                    return;
+                }
+                addTypeBtn.disabled = true;
+                const fd = new FormData();
+                fd.append('typename', name);
+                fetch('{{ url_for("create_user_type") }}', { method: 'POST', body: fd })
+                    .then(async res => {
+                        let data;
+                        try { data = await res.json(); }
+                        catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+                        if (data.success) {
+                            showToast(data.message, 'success');
+                            setTimeout(() => window.location.reload(), 800);
+                        } else {
+                            showToast(data.message || 'Failed to add type.', 'error');
+                            addTypeBtn.disabled = false;
+                        }
+                    })
+                    .catch(() => {
+                        showToast('Network error. Please try again.', 'error');
+                        addTypeBtn.disabled = false;
+                    });
+            });
+        }
+
+        // ---------- Edit / Add Modal ----------
+        const editModalEl = document.getElementById('editUserModal');
+        let editModal = null;
+        try {
+            editModal = new bootstrap.Modal(editModalEl);
+        } catch (err) {
+            console.error('Bootstrap JS failed to load:', err);
+        }
+        const editForm = document.getElementById('editUserForm');
+
+        let isAddMode = false;
+        const modalTitle = document.getElementById('editModalTitle');
+        const saveBtnLabel = document.getElementById('saveBtnLabel');
+        const passwordFields = document.getElementById('passwordFields');
+
+        const fields = ['firstname', 'lastname', 'email', 'phone', 'gender', 'istype', 'password', 'confirm_password'];
+
+        function setFieldError(name, msg) {
+            document.getElementById('err_' + name).textContent = msg || '';
+            const input = document.getElementById('edit' + name.charAt(0).toUpperCase() + name.slice(1));
+            if (input) input.classList.toggle('invalid-input', !!msg);
+        }
+
+        function clearErrors() {
+            fields.forEach(f => setFieldError(f, ''));
+            const gen = document.getElementById('editGeneralError');
+            gen.classList.add('d-none');
+            gen.textContent = '';
+        }
+
+        function showGeneralError(msg) {
+            const gen = document.getElementById('editGeneralError');
+            gen.textContent = msg;
+            gen.classList.remove('d-none');
+        }
+
+        function validateEditForm() {
+            clearErrors();
+            let ok = true;
+
+            const firstname = document.getElementById('editFirstname').value.trim();
+            const lastname = document.getElementById('editLastname').value.trim();
+            const email = document.getElementById('editEmail').value.trim();
+            const phone = document.getElementById('editPhone').value.trim();
+            const gender = document.getElementById('editGender').value;
+            const istype = document.getElementById('editIstype').value;
+
+            if (!firstname) { setFieldError('firstname', 'First name is required.'); ok = false; }
+            else if (firstname.length < 2) { setFieldError('firstname', 'First name must be at least 2 characters.'); ok = false; }
+
+            if (!lastname) { setFieldError('lastname', 'Last name is required.'); ok = false; }
+            else if (lastname.length < 2) { setFieldError('lastname', 'Last name must be at least 2 characters.'); ok = false; }
+
+            if (!email) { setFieldError('email', 'Email is required.'); ok = false; }
+            else if (!emailRe.test(email)) { setFieldError('email', 'Please enter a valid email address.'); ok = false; }
+
+            if (!phone) { setFieldError('phone', 'Phone number is required.'); ok = false; }
+            else if (!phoneRe.test(phone)) { setFieldError('phone', 'Please enter a valid 10-digit phone number.'); ok = false; }
+
+            if (!gender) { setFieldError('gender', 'Please select a gender.'); ok = false; }
+
+            if (!istype) { setFieldError('istype', 'Please select a user type.'); ok = false; }
+
+            if (isAddMode) {
+                const pwd = document.getElementById('editPassword').value;
+                const confirmPwd = document.getElementById('editConfirmPassword').value;
+
+                if (!pwd) { setFieldError('password', 'Password is required.'); ok = false; }
+                else if (pwd.length < 6) { setFieldError('password', 'Password must be at least 6 characters.'); ok = false; }
+                else if (!/[A-Z]/.test(pwd)) { setFieldError('password', 'Password must contain at least one uppercase letter.'); ok = false; }
+                else if (!/\d/.test(pwd)) { setFieldError('password', 'Password must contain at least one number.'); ok = false; }
+
+                if (!confirmPwd) { setFieldError('confirm_password', 'Please confirm the password.'); ok = false; }
+                else if (pwd !== confirmPwd) { setFieldError('confirm_password', 'Passwords do not match.'); ok = false; }
+            }
+
+            return ok;
+        }
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.js-edit-user');
+            if (!btn) return;
+            clearErrors();
+            isAddMode = false;
+            passwordFields.classList.add('d-none');
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editConfirmPassword').value = '';
+            modalTitle.innerHTML = '<i class="bi bi-pencil-square me-2"></i>Edit User';
+            saveBtnLabel.textContent = 'Save Changes';
+            document.getElementById('editUserId').value = btn.dataset.id;
+            document.getElementById('editFirstname').value = btn.dataset.firstname;
+            document.getElementById('editLastname').value = btn.dataset.lastname;
+            document.getElementById('editEmail').value = btn.dataset.email;
+            document.getElementById('editPhone').value = btn.dataset.phone;
+            document.getElementById('editGender').value = btn.dataset.gender;
+            document.getElementById('editIstype').value = btn.dataset.istype;
+            if (editModal) editModal.show();
+        });
+
+        fields.forEach(f => {
+            const input = document.getElementById('edit' + f.charAt(0).toUpperCase() + f.slice(1));
+            input.addEventListener('input', () => setFieldError(f, ''));
+            input.addEventListener('change', () => setFieldError(f, ''));
+        });
+
+        editForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateEditForm()) return;
+
+            const saveBtn = document.getElementById('saveUserBtn');
+            const spinner = document.getElementById('saveSpinner');
+            saveBtn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            const url = isAddMode ? '{{ url_for("create_user") }}' : '{{ url_for("update_user") }}';
+            fetch(url, { method: 'POST', body: new FormData(editForm) })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+
+                    if (data.success) {
+                        if (editModal) editModal.hide();
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        if (data.errors) Object.entries(data.errors).forEach(([k, v]) => setFieldError(k, v));
+                        showGeneralError(data.message || 'Update failed.');
+                        showToast(data.message || 'Update failed.', 'error');
+                    }
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'))
+                .finally(() => {
+                    saveBtn.disabled = false;
+                    spinner.classList.add('d-none');
+                });
+        });
+
+        // ---------- Activate / Deactivate ----------
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.js-toggle-user');
+            if (!btn) return;
+
+            const isActive = btn.dataset.active === 'true';
+            if (isActive && !confirm('Mark this user as INACTIVE? They will no longer appear as an active user.')) return;
+
+            const fd = new FormData();
+            fd.append('id', btn.dataset.id);
+
+            btn.disabled = true;
+            fetch('{{ url_for("toggle_user_status") }}', { method: 'POST', body: fd })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        showToast(data.message || 'Action failed.', 'error');
+                        btn.disabled = false;
+                    }
+                })
+                .catch(() => {
+                    showToast('Network error. Please try again.', 'error');
+                    btn.disabled = false;
+                });
+        });
+
+    </script>
+</body>
+</html>

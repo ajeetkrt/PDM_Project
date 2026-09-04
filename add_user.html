@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDM | Add User</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="app-shell">
+    <nav class="navbar-custom">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand-custom">
+                    <span class="brand-icon"><i class="bi bi-list"></i></span>
+                    <span> | PDM</span>
+                </a>
+
+                <div class="panel-nav">
+                    <a href="{{ url_for('rental_management') }}" class="btn-rental">
+                        <i class="bi bi-building"></i>Rental Management
+                    </a>
+                    <a href="{{ url_for('rides_management') }}" class="btn-rides">
+                        <i class="bi bi-car-front"></i>Rides Management
+                    </a>
+                </div>
+
+                <div class="d-flex align-items-center gap-3">
+                    <div class="user-greeting">
+                        <span class="user-avatar-sm"><i class="bi bi-person-fill"></i></span>
+                        Hello, {{ session['firstname'] }}
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">
+                        <i class="bi bi-box-arrow-right me-2"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="add-user-wrap pt-3">
+                <div class="container-fluid px-3 px-lg-4">
+                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }}">{{ message }}</div>
+                </div>
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <main class="add-user-wrap">
+        <div class="add-user-card glass-modal">
+            <div class="add-user-head">
+                <h5 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Add User</h5>
+                <a href="{{ url_for('dashboard') }}" class="btn-close-user" aria-label="Back"><i class="bi bi-x-lg"></i></a>
+            </div>
+
+            <form id="addUserForm" novalidate action="{{ url_for('create_user') }}" method="post">
+                <input type="hidden" name="ajax" value="1">
+                <div class="add-user-body">
+                    <div class="alert alert-danger d-none py-2 px-3 mb-2" id="generalError"></div>
+
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="firstname" name="firstname" placeholder="First name" value="">
+                                <label for="firstname"><i class="bi bi-person me-1"></i>First Name</label>
+                            </div>
+                            <div class="field-error" id="err_firstname"></div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="text" class="form-control" id="lastname" name="lastname" placeholder="Last name" value="">
+                                <label for="lastname"><i class="bi bi-person me-1"></i>Last Name</label>
+                            </div>
+                            <div class="field-error" id="err_lastname"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="email" class="form-control" id="email" name="email" placeholder="Email" value="">
+                                <label for="email"><i class="bi bi-envelope me-1"></i>Email Address</label>
+                            </div>
+                            <div class="field-error" id="err_email"></div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="tel" class="form-control" id="phone" name="phone" placeholder="Phone" value="">
+                                <label for="phone"><i class="bi bi-telephone me-1"></i>Phone Number</label>
+                            </div>
+                            <div class="field-error" id="err_phone"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <label class="filter-label" for="gender">Gender</label>
+                            <select class="form-select dark-select" id="gender" name="gender">
+                                <option value="">Select gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <div class="field-error" id="err_gender"></div>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="filter-label" for="usertype">User Type</label>
+                            <select class="form-select dark-select" id="usertype" name="istype">
+                                <option value="">Select user type</option>
+                                {% for t in types %}
+                                    <option value="{{ t['id'] }}">{{ t['typename'] }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="field-error" id="err_istype"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="password" class="form-control" id="password" name="password" placeholder="Password" value="">
+                                <label for="password"><i class="bi bi-key me-1"></i>Password</label>
+                            </div>
+                            <div class="field-error" id="err_password"></div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="form-floating">
+                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="Confirm password" value="">
+                                <label for="confirm_password"><i class="bi bi-key-fill me-1"></i>Confirm Password</label>
+                            </div>
+                            <div class="field-error" id="err_confirm_password"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="add-user-foot">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-cancel-user">Cancel</a>
+                    <button type="submit" class="btn btn-save-user" id="saveBtn">
+                        <span class="spinner-border spinner-border-sm d-none me-1" id="saveSpinner"></span>
+                        <i class="bi bi-person-plus me-1"></i>Add User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- Toasts -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
+
+    <script>
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const phoneRe = /^\d{10}$/;
+        const fields = ['firstname', 'lastname', 'email', 'phone', 'istype', 'gender', 'password', 'confirm_password'];
+
+        function showToast(message, type) {
+            const area = document.getElementById('toastArea');
+            const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+            const el = document.createElement('div');
+            el.className = `app-toast ${type}`;
+            el.innerHTML = `<i class="bi ${icon}"></i><span></span>`;
+            el.querySelector('span').textContent = message;
+            area.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('hide-out');
+                setTimeout(() => el.remove(), 350);
+            }, 3500);
+        }
+
+        function setFieldError(name, msg) {
+            document.getElementById('err_' + name).textContent = msg || '';
+            const input = document.getElementById(name);
+            if (input) input.classList.toggle('invalid-input', !!msg);
+        }
+
+        function clearErrors() {
+            fields.forEach(f => setFieldError(f, ''));
+            const gen = document.getElementById('generalError');
+            gen.classList.add('d-none');
+            gen.textContent = '';
+        }
+
+        function showGeneralError(msg) {
+            const gen = document.getElementById('generalError');
+            gen.textContent = msg;
+            gen.classList.remove('d-none');
+        }
+
+        function validateForm() {
+            clearErrors();
+            let ok = true;
+
+            const firstname = document.getElementById('firstname').value.trim();
+            const lastname = document.getElementById('lastname').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const gender = document.getElementById('gender').value;
+            const usertype = document.getElementById('usertype').value;
+            const pwd = document.getElementById('password').value;
+            const confirmPwd = document.getElementById('confirm_password').value;
+
+            if (!firstname) { setFieldError('firstname', 'First name is required.'); ok = false; }
+            else if (firstname.length < 2) { setFieldError('firstname', 'First name must be at least 2 characters.'); ok = false; }
+
+            if (!lastname) { setFieldError('lastname', 'Last name is required.'); ok = false; }
+            else if (lastname.length < 2) { setFieldError('lastname', 'Last name must be at least 2 characters.'); ok = false; }
+
+            if (!email) { setFieldError('email', 'Email is required.'); ok = false; }
+            else if (!emailRe.test(email)) { setFieldError('email', 'Please enter a valid email address.'); ok = false; }
+
+            if (!phone) { setFieldError('phone', 'Phone number is required.'); ok = false; }
+            else if (!phoneRe.test(phone)) { setFieldError('phone', 'Please enter a valid 10-digit phone number.'); ok = false; }
+
+            if (!gender) { setFieldError('gender', 'Please select a gender.'); ok = false; }
+
+            if (!usertype) { setFieldError('istype', 'Please select a user type.'); ok = false; }
+
+            if (!pwd) { setFieldError('password', 'Password is required.'); ok = false; }
+            else if (pwd.length < 6) { setFieldError('password', 'Password must be at least 6 characters.'); ok = false; }
+            else if (!/[A-Z]/.test(pwd)) { setFieldError('password', 'Password must contain at least one uppercase letter.'); ok = false; }
+            else if (!/\d/.test(pwd)) { setFieldError('password', 'Password must contain at least one number.'); ok = false; }
+
+            if (!confirmPwd) { setFieldError('confirm_password', 'Please confirm the password.'); ok = false; }
+            else if (pwd !== confirmPwd) { setFieldError('confirm_password', 'Passwords do not match.'); ok = false; }
+
+            return ok;
+        }
+
+        fields.forEach(f => {
+            const input = document.getElementById(f);
+            if (input) {
+                input.addEventListener('input', () => setFieldError(f, ''));
+                input.addEventListener('change', () => setFieldError(f, ''));
+            }
+        });
+
+        document.getElementById('addUserForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateForm()) return;
+
+            const saveBtn = document.getElementById('saveBtn');
+            const spinner = document.getElementById('saveSpinner');
+            saveBtn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            fetch('{{ url_for("create_user") }}', { method: 'POST', body: new FormData(document.getElementById('addUserForm')) })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.href = '{{ url_for("dashboard") }}', 900);
+                    } else {
+                        if (data.errors) Object.entries(data.errors).forEach(([k, v]) => setFieldError(k, v));
+                        showGeneralError(data.message || 'Failed to add user.');
+                        showToast(data.message || 'Failed to add user.', 'error');
+                        saveBtn.disabled = false;
+                        spinner.classList.add('d-none');
+                    }
+                })
+                .catch(() => {
+                    showToast('Network error. Please try again.', 'error');
+                    saveBtn.disabled = false;
+                    spinner.classList.add('d-none');
+                });
+        });
+    </script>
+</body>
+</html>

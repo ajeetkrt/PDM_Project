@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <title>Personal Data Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="dash-page">
+    <nav class="navbar-custom">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand-custom">
+                    <span class="brand-icon"><i class="bi bi-list"></i></span>
+                    <span> |  Personal Data Management</span>
+                </a>
+
+                <div class="d-flex align-items-center gap-3">
+                    <!-- {% if me_type == 3 %}
+                    <a href="{{ url_for('my_details_pdf') }}" class="btn-add-user dl-link" title="Download my personal details (PDF)"><i class="bi bi-person-badge"></i>My Details</a>
+                    <a href="{{ url_for('my_rides_pdf') }}" class="btn-add-user dl-link" title="Download my daily rides ledger (PDF)"><i class="bi bi-journal-text"></i>My Rides PDF</a>
+                    {% endif %} -->
+                    <div class="user-greeting">
+                        <span class="user-avatar-sm"><i class="bi bi-person-fill"></i></span>
+                        Hello, {{ session['firstname'] }}
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">
+                        <i class="bi bi-box-arrow-right"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container-fluid px-3 px-lg-4 pt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }} mb-0">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="page-layout container-fluid px-3 px-lg-4">
+        <aside class="sidebar-panel offcanvas-lg offcanvas-start" tabindex="-1" id="filterSidebar" aria-label="Filters panel">
+            <div class="offcanvas-header d-lg-none pb-2">
+                <h5 class="offcanvas-title text-white mb-0"><i class="bi bi-funnel me-2"></i>Filters</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body p-0">
+                <div class="sidebar-inner">
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-funnel me-2"></i>Filters</h6>
+                        <form method="get" action="{{ url_for('rides_management') }}">
+                            <label class="filter-label" for="filterYear">Ride Year</label>
+                            <select class="form-select dark-select" id="filterYear" name="year">
+                                <option value="" {% if not filter_year %}selected{% endif %}>All Years</option>
+                                {% for yr in years %}
+                                    <option value="{{ yr }}" {% if filter_year == yr|string %}selected{% endif %}>{{ yr }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-apply-filter w-100 mt-3">
+                                <i class="bi bi-check2-circle me-1"></i>Apply Filter
+                            </button>
+                            <a href="{{ url_for('rides_management') }}" class="btn btn-reset-filter w-100 mt-2">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                            </a>
+                        </form>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-graph-up me-2"></i>Overview</h6>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-person-badge me-2"></i>Total Drivers</span>
+                            <span class="stat-value">{{ stats.drivers if stats else 0 }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-speedometer2 me-2"></i>KM This Month</span>
+                            <span class="stat-value">{{ '{:,.1f}'.format(stats.km_month) if stats else 0 }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-cash-coin me-2"></i>Paid This Month</span>
+                            <span class="stat-value text-green">₹ {{ '{:,.0f}'.format(stats.paid_month) if stats else 0 }}</span>
+                        </div>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-link-45deg me-2"></i>Quick Links</h6>
+                        <div class="side-links">
+                            <a href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i>Dashboard</a>
+                            {% if me_type != 3 %}
+                            <a href="{{ url_for('rental_management') }}"><i class="bi bi-building"></i>Rental Management</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <button class="btn btn-filter-toggle d-lg-none mb-3" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterSidebar">
+                <i class="bi bi-funnel me-1"></i>Filters
+            </button>
+
+            <div class="users-card">
+                <div class="dash-profile">
+                    <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
+                    <div>
+                        <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
+                        <div class="dp-email">{{ session['email'] }}</div>
+                    </div>
+                    <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
+                        <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name }}
+                    </span>
+                </div>
+
+                {% if stats %}
+                <div class="stats-grid">
+                    <div class="stat-card indigo">
+                        <div class="sc-icon"><i class="bi bi-person-badge-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">{{ stats.drivers }}</div>
+                            <div class="sc-label">Total Drivers</div>
+                        </div>
+                    </div>
+                    <div class="stat-card cyan">
+                        <div class="sc-icon"><i class="bi bi-speedometer"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">{{ '{:,.1f}'.format(stats.km_month) }}</div>
+                            <div class="sc-label">KM This Month</div>
+                        </div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="sc-icon"><i class="bi bi-cash-coin"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(stats.paid_month) }}</div>
+                            <div class="sc-label">This Month Payout</div>
+                        </div>
+                    </div>
+                    <div class="stat-card pink">
+                        <div class="sc-icon"><i class="bi bi-wallet2"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(stats.paid_all) }}</div>
+                            <div class="sc-label">Total Paid <small class="sc-sub">(All Time)</small></div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="rm-head">
+                    <div class="rm-tabs" role="tablist">
+                        <button type="button" class="rm-tab active" id="tabDrivers">
+                            <i class="bi bi-person-badge me-1"></i>Drivers <span class="rm-count">{{ drivers|length }}</span>
+                        </button>
+                        <button type="button" class="rm-tab" id="tabLedger">
+                            <i class="bi bi-journal-text me-1"></i>Daily Rides <span class="rm-count">{{ ledger|length }}</span>
+                        </button>
+                        {% if me_type in [1, 5] %}
+                        <button type="button" class="rm-tab" id="tabFinance">
+                            <i class="bi bi-bar-chart-line me-1"></i>Finance
+                        </button>
+                        {% endif %}
+                    </div>
+                    <div class="users-head-right">
+                        {% if me_type == 3 %}
+                        <a href="{{ url_for('my_details_pdf') }}" class="btn-add-user dl-link" title="Download my personal details (PDF)"><i class="bi bi-person-badge"></i>My Details</a>
+                        <a href="{{ url_for('my_rides_pdf') }}" class="btn-add-user dl-link" title="Download my daily rides ledger (PDF)"><i class="bi bi-journal-text"></i>My Rides PDF</a>
+                        {% endif %}
+                        <input type="text" id="rideSearch" class="table-search" placeholder="Search drivers / rides..." autocomplete="off">
+                        {% if me_type in [1, 5] %}
+                            <a href="#" class="btn-add-user" id="openDriverModal"><i class="bi bi-person-plus"></i>Add Driver</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Drivers Panel -->
+                <div class="rm-panel" id="driversPanel">
+                    <div class="table-responsive">
+                        <table class="table users-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Driver</th>
+                                    <th>Contact</th>
+                                    <th>Aadhaar</th>
+                                    <th>Licence No</th>
+                                    <th>Vehicle</th>
+                                    <th>Joining Date</th>
+                                    <th>Total Paid</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if drivers %}
+                                    {% for d in drivers %}
+                                        <tr>
+                                            <td class="cell-id">{{ loop.index }}</td>
+                                            <td>
+                                                <div class="user-cell">
+                                                    <span class="user-avatar-sm2">{{ d['firstname'][0]|upper }}{{ d['lastname'][0]|upper }}</span>
+                                                    <div class="user-meta">
+                                                        <span class="user-name">{{ d['firstname'] }} {{ d['lastname'] }}</span>
+                                                        <small class="user-sub">{{ d['type_name'] or 'Member' }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="contact-stack">
+                                                    <span class="cs-main mono">{{ d['phone'] }}</span>
+                                                    {% if d['alt_phone'] %}
+                                                        <small class="cs-sub mono"><i class="bi bi-telephone-outbound me-1"></i>{{ d['alt_phone'] }}</small>
+                                                    {% else %}
+                                                        <small class="cs-sub"><i class="bi bi-dash-circle me-1"></i>No alt. mobile</small>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td class="mono cell-muted">**** **** {{ d['aadharno'][-4:] }}</td>
+                                            <td class="mono cell-muted">{{ d['license_no'] }}</td>
+                                            <td>
+                                                {% if d['vehicle_no'] %}
+                                                    <span class="badge-soft gray"><i class="bi bi-truck"></i>{{ d['vehicle_no'] }}</span>
+                                                {% else %}
+                                                    <span class="badge-soft gray"><i class="bi bi-dash-circle"></i>N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="cell-muted">{{ d['joiningdate'].strftime('%d %b %Y') if d['joiningdate'] else '—' }}</td>
+                                            <td class="paid-cell">
+                                                <div class="paid-wrap">
+                                                    <span class="money green">₹ {{ '{:,.2f}'.format(d['total_paid']) }}</span>
+                                                    <small class="months-chip">{{ '{:,.1f}'.format(d['total_km']) }} km</small>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="d-inline-flex justify-content-center gap-2 actions-cell">
+                                                    {% if me_type in [1, 5] %}
+                                                    <button type="button" class="btn-action edit js-edit-driver"
+                                                            data-id="{{ d['id'] }}"
+                                                            data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
+                                                            data-aadhar="{{ d['aadharno'] }}"
+                                                            data-license="{{ d['license_no'] }}"
+                                                            data-vehicle="{{ d['vehicle_no'] or '' }}"
+                                                            data-altphone="{{ d['alt_phone'] or '' }}"
+                                                            data-address="{{ d['address'] or '' }}"
+                                                            data-joining="{{ d['joiningdate'].strftime('%Y-%m-%d') if d['joiningdate'] else '' }}"
+                                                            data-has-dl="{{ 1 if d['dlimage'] else 0 }}"
+                                                            data-has-aadharimg="{{ 1 if d['aadharimage'] else 0 }}"
+                                                            data-has-photo="{{ 1 if d['driverimage'] else 0 }}"
+                                                            title="Edit driver">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    <a class="btn-action dl" title="Download statement (PDF + documents)"
+                                                       href="{{ url_for('driver_download_pdf', driver_id=d['id']) }}">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
+                                                    {% endif %}
+                                                    {% if me_type in [1, 5] or me_type == 3 %}
+                                                    <button type="button" class="btn-action edit js-add-ride"
+                                                            data-id="{{ d['id'] }}"
+                                                            data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
+                                                            data-last-meter="{{ '' if d['last_meter_end'] is none else d['last_meter_end'] }}"
+                                                            title="Record daily ride">
+                                                        <i class="bi bi-cash-stack"></i>
+                                                    </button>
+                                                    {% endif %}
+                                                    <button type="button"
+                                                          class="btn-action success js-history"
+                                                            data-id="{{ d['id'] }}"
+                                                           data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
+                                                            title="Ride history">
+                                                          <i class="bi bi-clock-history"></i>
+                                                    </button>
+                                                    {% if me_type in [1, 5] %}
+                                                    <button type="button" class="btn-action del js-del-driver"
+                                                            data-id="{{ d['id'] }}"
+                                                            data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
+                                                            title="Delete driver">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9">
+                                            <div class="empty-state">
+                                                <i class="bi bi-person-x"></i>
+                                                <p class="mb-0">No drivers yet.{% if me_type in [1, 5] %} Click "Add Driver" to register the first driver.{% endif %}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Daily Rides Ledger -->
+                <div class="rm-panel d-none" id="ledgerPanel">
+                    <div class="table-responsive">
+                        <table class="table users-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Date</th>
+                                    <th>Driver</th>
+                                    <th>Meter (Start → End)</th>
+                                    <th>KM Driven</th>
+                                    <th>Amount</th>
+                                    <th>Meter Image</th>
+                                    <th>Remarks</th>
+                                    {% if me_type in [1, 5] %}<th>Actions</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if ledger %}
+                                    {% for l in ledger %}
+                                        <tr>
+                                            <td class="cell-id">{{ loop.index }}</td>
+                                            <td class="cell-muted">{{ l['ride_date'].strftime('%d %b %Y') if l['ride_date'] else '—' }}</td>
+                                            <td>
+                                                <div class="user-cell">
+                                                    <span class="user-avatar-sm2">{{ l['firstname'][0]|upper }}{{ l['lastname'][0]|upper }}</span>
+                                                    <div class="user-meta">
+                                                        <span class="user-name">{{ l['firstname'] }} {{ l['lastname'] }}</span>
+                                                        {% if l['vehicle_no'] %}<small class="user-sub mono">{{ l['vehicle_no'] }}</small>{% endif %}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="mono cell-muted">
+                                                {{ '{:,.0f}'.format(l['meter_start']) if l['meter_start'] is not none else '—' }}
+                                                →
+                                                {{ '{:,.0f}'.format(l['meter_end']) if l['meter_end'] is not none else '—' }}
+                                            </td>
+                                            <td><span class="badge-soft cyan"><i class="bi bi-speedometer2"></i>{{ '{:,.1f}'.format(l['km_driven']) }} km</span></td>
+                                            <td><span class="money green">₹ {{ '{:,.2f}'.format(l['amount']) }}</span></td>
+                                            <td>
+                                                {% if l['meter_image'] %}
+                                                    <img src="{{ url_for('static', filename=l['meter_image']) }}" class="meter-thumb js-view-meter" alt="Meter reading"
+                                                         data-full="{{ url_for('static', filename=l['meter_image']) }}" title="View meter reading">
+                                                {% else %}
+                                                    <span class="cell-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="remark-cell" title="{{ l['remarks'] or '' }}">{{ l['remarks'] or '—' }}</td>
+                                            {% if me_type in [1, 5] %}
+                                            <td>
+                                                <div class="d-inline-flex justify-content-center gap-2 actions-cell">
+                                                    <button type="button" class="btn-action edit js-edit-ride"
+                                                            data-id="{{ l['id'] }}"
+                                                            data-driver="{{ l['driverid'] }}"
+                                                            data-date="{{ l['ride_date'].strftime('%Y-%m-%d') if l['ride_date'] else '' }}"
+                                                            data-km="{{ l['km_driven'] }}"
+                                                            data-mstart="{{ '' if l['meter_start'] is none else l['meter_start'] }}"
+                                                            data-mend="{{ '' if l['meter_end'] is none else l['meter_end'] }}"
+                                                            data-amount="{{ l['amount'] }}"
+                                                            data-remarks="{{ l['remarks'] or '' }}"
+                                                            data-has-meter="{{ 1 if l['meter_image'] else 0 }}"
+                                                            title="Edit ride">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    <button type="button" class="btn-action del js-del-ride" data-id="{{ l['id'] }}" title="Delete ride">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            {% endif %}
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="{{ 9 if me_type in [1, 5] else 8 }}">
+                                            <div class="empty-state">
+                                                <i class="bi bi-journal-x"></i>
+                                                <p class="mb-0">{% if filter_year %}No rides recorded for {{ filter_year }}.{% else %}No daily ride transactions yet.{% endif %}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Rides Finance Panel -->
+                {% if me_type in [1, 5] %}
+                <div class="rm-panel d-none" id="financePanel">
+                    <div class="stats-grid mb-3">
+                        <div class="stat-card indigo clickable" id="cardTotal" title="Show amount breakdown"
+                             role="button" tabindex="0">
+                            <div class="sc-icon"><i class="bi bi-cash-stack"></i></div>
+                            <div class="sc-body">
+                                <div class="sc-value">₹ {{ '{:,.0f}'.format(rf_totals.total_rides) }}</div>
+                                <div class="sc-label">Total Rides Amount</div>
+                            </div>
+                        </div>
+                        <div class="stat-card green clickable" id="cardManaged" title="Show described entries"
+                             role="button" tabindex="0">
+                            <div class="sc-icon"><i class="bi bi-journal-check"></i></div>
+                            <div class="sc-body">
+                                <div class="sc-value">₹ {{ '{:,.0f}'.format(rf_totals.managed) }}</div>
+                                <div class="sc-label">Managed Amount</div>
+                            </div>
+                        </div>
+                        <div class="stat-card pink clickable" id="cardUnmanaged" title="Describe an amount"
+                             role="button" tabindex="0">
+                            <div class="sc-icon"><i class="bi bi-hourglass-split"></i></div>
+                            <div class="sc-body">
+                                <div class="sc-value">₹ {{ '{:,.0f}'.format(rf_totals.unmanaged) }}</div>
+                                <div class="sc-label">Unmanaged Amount</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="master-card mb-3" id="describedCard">
+                        <div class="mc-head">
+                            <h6><i class="bi bi-journal-text me-2"></i>Described Ride Amounts</h6>
+                            <div class="d-inline-flex align-items-center gap-2">
+                                <a href="{{ url_for('rides_finance_download') }}" class="btn-add-user btn-sm-master btn-icon-only"
+                                   title="Rides Finance Report" aria-label="Rides Finance Report"><i class="bi bi-file-earmark-bar-graph"></i></a>
+                                <button type="button" class="btn-add-user btn-sm-master" id="openRideFinModal"><i class="bi bi-plus-lg"></i>Add Entry</button>
+                            </div>
+                        </div>
+                        <div class="mc-body mc-body-scroll">
+                            <table class="table users-table mb-0">
+                                <thead><tr><th>#</th><th>Type</th><th>Amount</th><th>Bank</th><th>FD No</th><th>Date</th><th>Actions</th></tr></thead>
+                                <tbody>
+                                    {% for f in rf_entries %}
+                                    <tr>
+                                        <td class="cell-id">{{ loop.index }}</td>
+                                        <td><span class="badge-soft indigo">{{ f['type_name'] }}</span></td>
+                                        <td><span class="money green">₹ {{ '{:,.2f}'.format(f['amount']) }}</span></td>
+                                        <td>{{ f['bank_name'] }}</td>
+                                        <td class="cell-muted">{{ f['fd_no'] or '—' }}</td>
+                                        <td class="cell-muted">{{ f['entry_date'].strftime('%d %b %Y') if f['entry_date'] else '—' }}</td>
+                                        <td>
+                                            <div class="d-inline-flex gap-2 actions-cell">
+                                                <button type="button" class="btn-action edit js-rf-edit"
+                                                        data-id="{{ f['id'] }}"
+                                                        data-type="{{ f['type_id'] }}"
+                                                        data-amount="{{ f['amount'] }}"
+                                                        data-bank="{{ f['bank_name'] }}"
+                                                        data-user="{{ f['user_id'] or '' }}"
+                                                        data-date="{{ f['entry_date'].strftime('%Y-%m-%d') if f['entry_date'] else '' }}"
+                                                        data-fd="{{ f['fd_no'] or '' }}"
+                                                        data-remarks="{{ f['remarks'] or '' }}"
+                                                        title="Edit entry"><i class="bi bi-pencil-square"></i></button>
+                                                <button type="button" class="btn-action del js-rf-del" data-id="{{ f['id'] }}" title="Delete entry"><i class="bi bi-trash3"></i></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="7" class="text-center cell-muted py-3">No described amounts yet — click "Add Entry" to describe the ride payouts.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="row g-3" id="finBreakdown">
+                        <div class="col-lg-6">
+                            <div class="master-card">
+                                <div class="mc-head"><h6><i class="bi bi-person-badge me-2"></i>Driver-wise Amounts</h6></div>
+                                <div class="mc-body mc-body-scroll">
+                                    <table class="table users-table mb-0">
+                                        <thead><tr><th>Driver</th><th class="text-end">Rides</th><th class="text-end">KM</th><th class="text-end">Amount</th></tr></thead>
+                                        <tbody>
+                                            {% for f in fin_rows %}
+                                            <tr>
+                                                <td>{{ f['driver'] }}</td>
+                                                <td class="text-end">{{ f['rides'] }}</td>
+                                                <td class="text-end">{{ '{:,.1f}'.format(f['km']) }}</td>
+                                                <td class="text-end money green">₹ {{ '{:,.2f}'.format(f['amount']) }}</td>
+                                            </tr>
+                                            {% else %}
+                                            <tr><td colspan="4" class="text-center cell-muted py-3">No transactions yet.</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="master-card">
+                                <div class="mc-head"><h6><i class="bi bi-calendar3 me-2"></i>Month-wise Summary</h6></div>
+                                <div class="mc-body mc-body-scroll">
+                                    <table class="table users-table mb-0">
+                                        <thead><tr><th>Month</th><th class="text-end">Rides</th><th class="text-end">KM</th><th class="text-end">Amount</th></tr></thead>
+                                        <tbody>
+                                            {% for m in monthly %}
+                                            <tr>
+                                                <td class="mono">{{ m['ym'] }}</td>
+                                                <td class="text-end">{{ m['rides'] }}</td>
+                                                <td class="text-end">{{ '{:,.1f}'.format(m['km']) }}</td>
+                                                <td class="text-end money green">₹ {{ '{:,.2f}'.format(m['amount']) }}</td>
+                                            </tr>
+                                            {% else %}
+                                            <tr><td colspan="4" class="text-center cell-muted py-3">No monthly data yet.</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+    {% if me_type in [1, 5] %}
+    <!-- Add Driver Modal -->
+    <div class="modal fade" id="addDriverModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Add Driver</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addDriverForm" enctype="multipart/form-data" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="driverGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="filter-label" for="dUser">Select Driver (User Account)</label>
+                                <select class="form-select dark-select" id="dUser" name="userid">
+                                    <option value="">Choose user</option>
+                                    {% for c in choices %}
+                                        <option value="{{ c['id'] }}">{{ c['firstname'] }} {{ c['lastname'] }} — {{ c['email'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="err_userid"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="filter-label" for="dJoinDate">Joining Date</label>
+                                <input type="date" class="form-control dark-select" id="dJoinDate" name="joiningdate" value="{{ today }}">
+                                <div class="field-error" id="err_joiningdate"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="12" inputmode="numeric" class="form-control" id="dAadhar" name="aadharno" placeholder="Aadhaar number">
+                                    <label for="dAadhar"><i class="bi bi-fingerprint me-1"></i>Aadhaar Number</label>
+                                </div>
+                                <div class="field-error" id="err_aadharno"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="30" class="form-control text-uppercase" id="dLicense" name="license_no" placeholder="Driving licence no.">
+                                    <label for="dLicense"><i class="bi bi-card-heading me-1"></i>Licence Number</label>
+                                </div>
+                                <div class="field-error" id="err_license_no"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="25" class="form-control text-uppercase" id="dVehicle" name="vehicle_no" placeholder="Vehicle number">
+                                    <label for="dVehicle"><i class="bi bi-truck me-1"></i>Vehicle Number</label>
+                                </div>
+                                <div class="field-error" id="err_vehicle_no"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="tel" maxlength="10" inputmode="numeric" class="form-control" id="dAltPhone" name="alt_phone" placeholder="Alternate mobile">
+                                    <label for="dAltPhone"><i class="bi bi-telephone-outbound me-1"></i>Alternate Mobile</label>
+                                </div>
+                                <div class="field-error" id="err_alt_phone"></div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-floating">
+                                    <textarea class="form-control" id="dAddress" name="address" placeholder="Address" style="height:48px"></textarea>
+                                    <label for="dAddress"><i class="bi bi-geo-alt me-1"></i>Address</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-cloud-arrow-up me-1"></i>Documents &amp; Photo</label>
+                        <div class="file-grid file-grid-3">
+                            <div class="file-field">
+                                <input type="file" id="fdlImg" name="dlimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="fdlImg"><i class="bi bi-file-earmark-image"></i><span>Driving Licence Image</span></label>
+                                <div class="field-error" id="err_dlimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="dAadharImg" name="aadharimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="dAadharImg"><i class="bi bi-file-earmark-image"></i><span>Aadhaar Image</span></label>
+                                <div class="field-error" id="err_aadharimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="dPhotoImg" name="driverimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="dPhotoImg"><i class="bi bi-file-earmark-image"></i><span>Driver Photo</span></label>
+                                <div class="field-error" id="err_driverimage"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveDriverBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="driverSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Driver
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Driver Modal -->
+    <div class="modal fade" id="editDriverModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Driver — <span id="edNameLabel"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editDriverForm" enctype="multipart/form-data" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editDriverGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="filter-label" for="edJoinDate">Joining Date</label>
+                                <input type="date" class="form-control dark-select" id="edJoinDate" name="joiningdate">
+                                <div class="field-error" id="errEd_joiningdate"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="filter-label">Linked User Account</label>
+                                <input type="text" class="form-control" id="edUserName" disabled>
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="12" inputmode="numeric" class="form-control" id="edAadhar" name="aadharno" placeholder="Aadhaar number">
+                                    <label for="edAadhar"><i class="bi bi-fingerprint me-1"></i>Aadhaar Number</label>
+                                </div>
+                                <div class="field-error" id="errEd_aadharno"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="30" class="form-control text-uppercase" id="edLicense" name="license_no" placeholder="Driving licence no.">
+                                    <label for="edLicense"><i class="bi bi-card-heading me-1"></i>Licence Number</label>
+                                </div>
+                                <div class="field-error" id="errEd_license_no"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" maxlength="25" class="form-control text-uppercase" id="edVehicle" name="vehicle_no" placeholder="Vehicle number">
+                                    <label for="edVehicle"><i class="bi bi-truck me-1"></i>Vehicle Number</label>
+                                </div>
+                                <div class="field-error" id="errEd_vehicle_no"></div>
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="tel" maxlength="10" inputmode="numeric" class="form-control" id="edAltPhone" name="alt_phone" placeholder="Alternate mobile">
+                                    <label for="edAltPhone"><i class="bi bi-telephone-outbound me-1"></i>Alternate Mobile</label>
+                                </div>
+                                <div class="field-error" id="errEd_alt_phone"></div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-floating">
+                                    <textarea class="form-control" id="edAddress" name="address" placeholder="Address" style="height:48px"></textarea>
+                                    <label for="edAddress"><i class="bi bi-geo-alt me-1"></i>Address</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-cloud-arrow-up me-1"></i>Replace Documents (optional)</label>
+                        <div class="file-grid file-grid-3">
+                            <div class="file-field">
+                                <input type="file" id="edDlImg" name="dlimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="edDlImg"><i class="bi bi-file-earmark-image"></i><span id="edDlLabel">Licence Image (keep existing)</span></label>
+                                <div class="field-error" id="errEd_dlimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="edAadharImg" name="aadharimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="edAadharImg"><i class="bi bi-file-earmark-image"></i><span id="edAadharLabel">Aadhaar Image (keep existing)</span></label>
+                                <div class="field-error" id="errEd_aadharimage"></div>
+                            </div>
+                            <div class="file-field">
+                                <input type="file" id="edPhotoImg" name="driverimage" accept=".png,.jpg,.jpeg,.webp">
+                                <label for="edPhotoImg"><i class="bi bi-file-earmark-image"></i><span id="edPhotoLabel">Driver Photo (keep existing)</span></label>
+                                <div class="field-error" id="errEd_driverimage"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveDriverEditBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="driverEditSpinner"></span>
+                            <i class="bi bi-check-lg me-1"></i>Update Driver
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if me_type in [1, 5] or me_type == 3 %}
+    <!-- Add Ride Modal -->
+    <div class="modal fade" id="addRideModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-speedometer me-2"></i>Record Daily Ride</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addRideForm" enctype="multipart/form-data" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="rideGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="filter-label" for="rDriver">Driver</label>
+                                <select class="form-select dark-select" id="rDriver" name="driverid">
+                                    <option value="">Select driver...</option>
+                                    {% for d in drivers %}
+                                        <option value="{{ d['id'] }}">{{ d['firstname'] }} {{ d['lastname'] }}{% if d['vehicle_no'] %} ({{ d['vehicle_no'] }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errR_driverid"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="filter-label" for="rDate">Ride Date</label>
+                                <input type="date" class="form-control dark-select" id="rDate" name="ride_date" value="{{ today }}">
+                                <div class="field-error" id="errR_ride_date"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="0.1" min="0" class="form-control" id="rKm" name="km_driven" placeholder="KM driven">
+                                    <label for="rKm"><i class="bi bi-speedometer2 me-1"></i>KM Driven</label>
+                                </div>
+                                <div class="field-error" id="errR_km_driven"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="1" min="0" class="form-control" id="rMStart" name="meter_start" placeholder="Meter start">
+                                    <label for="rMStart"><i class="bi bi-0-circle me-1"></i>Meter Start</label>
+                                </div>
+                                <div class="field-error" id="errR_meter_start"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="1" min="0" class="form-control" id="rMEnd" name="meter_end" placeholder="Meter end">
+                                    <label for="rMEnd"><i class="bi bi-1-circle me-1"></i>Meter End</label>
+                                </div>
+                                <div class="field-error" id="errR_meter_end"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="0.01" min="0" class="form-control" id="rAmount" name="amount" placeholder="Amount">
+                                    <label for="rAmount"><i class="bi bi-currency-rupee me-1"></i>Amount</label>
+                                </div>
+                                <div class="field-error" id="errR_amount"></div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2" for="rRemarks">Remarks</label>
+                        <textarea class="form-control" id="rRemarks" name="remarks" rows="2" maxlength="500" placeholder="Route, trip details... (optional)"></textarea>
+                        <div class="field-error" id="errR_remarks"></div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-camera me-1"></i>Meter Reading Image <small class="text-muted">(required)</small></label>
+                        <div class="file-field w-100">
+                            <input type="file" id="rMeterImg" name="meter_image" accept=".png,.jpg,.jpeg,.webp">
+                            <label for="rMeterImg"><i class="bi bi-file-earmark-image"></i><span>Odometer Photo</span></label>
+                            <div class="field-error" id="errR_meter_image"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveRideBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="rideSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Ride
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Ride Modal -->
+    <div class="modal fade" id="editRideModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Ride Record</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editRideForm" enctype="multipart/form-data" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editRideGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="filter-label" for="erDriver">Driver</label>
+                                <select class="form-select dark-select" id="erDriver" name="driverid">
+                                    {% for d in drivers %}
+                                        <option value="{{ d['id'] }}">{{ d['firstname'] }} {{ d['lastname'] }}{% if d['vehicle_no'] %} ({{ d['vehicle_no'] }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errE_driverid"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="filter-label" for="erDate">Ride Date</label>
+                                <input type="date" class="form-control dark-select" id="erDate" name="ride_date">
+                                <div class="field-error" id="errE_ride_date"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="0.1" min="0" class="form-control" id="erKm" name="km_driven" placeholder="KM driven">
+                                    <label for="erKm"><i class="bi bi-speedometer2 me-1"></i>KM Driven</label>
+                                </div>
+                                <div class="field-error" id="errE_km_driven"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="1" min="0" class="form-control" id="erMStart" name="meter_start" placeholder="Meter start">
+                                    <label for="erMStart"><i class="bi bi-0-circle me-1"></i>Meter Start</label>
+                                </div>
+                                <div class="field-error" id="errE_meter_start"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="1" min="0" class="form-control" id="erMEnd" name="meter_end" placeholder="Meter end">
+                                    <label for="erMEnd"><i class="bi bi-1-circle me-1"></i>Meter End</label>
+                                </div>
+                                <div class="field-error" id="errE_meter_end"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <input type="number" step="0.01" min="0" class="form-control" id="erAmount" name="amount" placeholder="Amount">
+                                    <label for="erAmount"><i class="bi bi-currency-rupee me-1"></i>Amount</label>
+                                </div>
+                                <div class="field-error" id="errE_amount"></div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2" for="erRemarks">Remarks</label>
+                        <textarea class="form-control" id="erRemarks" name="remarks" rows="2" maxlength="500" placeholder="Route, trip details... (optional)"></textarea>
+                        <div class="field-error" id="errE_remarks"></div>
+
+                        <label class="filter-label mt-2"><i class="bi bi-camera me-1"></i>Meter Reading Image <small class="text-muted">(replace only)</small></label>
+                        <div class="file-field w-100">
+                            <input type="file" id="erMeterImg" name="meter_image" accept=".png,.jpg,.jpeg,.webp">
+                            <label for="erMeterImg"><i class="bi bi-file-earmark-image"></i><span id="erMeterLabel">Odometer Photo (keep existing)</span></label>
+                            <div class="field-error" id="errE_meter_image"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveRideEditBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="rideEditSpinner"></span>
+                            <i class="bi bi-check-lg me-1"></i>Update Ride
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if me_type in [1, 5] %}
+    <!-- Describe Ride Amount Modal (add/edit) -->
+    <div class="modal fade" id="rideFinModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rideFinModalTitle"><i class="bi bi-journal-plus me-2"></i>Describe Ride Amount</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="rideFinForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="rideFinGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="filter-label" for="rfType">Managed Amount Type</label>
+                                <select class="form-select dark-select" id="rfType" name="category">
+                                    <option value="">Select type...</option>
+                                    {% for t in rf_types %}
+                                        <option value="{{ t['id'] }}">{{ t['type_name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errRF_category"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="filter-label" for="rfAmount">Amount</label>
+                                <input type="number" step="0.01" min="1" class="form-control" id="rfAmount" name="amount" placeholder="0.00">
+                                <div class="rf-hint small mt-1"><i class="bi bi-wallet2 me-1"></i>Available unmanaged: ₹
+                                    <span id="rfAvailAmount" data-avail="{{ '{:.2f}'.format(rf_totals.unmanaged) }}">{{ '{:,.2f}'.format(rf_totals.unmanaged) }}</span>
+                                </div>
+                                <div class="field-error" id="errRF_amount"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="rfBank">Bank</label>
+                                <select class="form-select dark-select" id="rfBank" name="bank_name">
+                                    <option value="">Select bank...</option>
+                                    {% for b in rf_banks %}
+                                        <option value="{{ b }}">{{ b }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errRF_bank_name"></div>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="filter-label" for="rfUser">User Account</label>
+                                <select class="form-select dark-select" id="rfUser" name="fin_user">
+                                    <option value="">Select user account...</option>
+                                    {% for u in rf_users %}
+                                        <option value="{{ u['id'] }}">{{ u['firstname'] }} {{ u['lastname'] or '' }} ({{ u['email'] }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errRF_fin_user"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="rfDate">Date</label>
+                                <input type="date" class="form-control dark-select" id="rfDate" name="entry_date" value="{{ today }}">
+                                <div class="field-error" id="errRF_entry_date"></div>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="filter-label" for="rFdNo">FD No <small class="text-muted">(required for Fixed Deposit)</small></label>
+                                <input type="text" class="form-control" id="rFdNo" name="fd_no" maxlength="40" placeholder="e.g. FD-001234" autocomplete="off">
+                                <div class="field-error" id="errRF_fd_no"></div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2" for="rfRemarks">Remarks</label>
+                        <textarea class="form-control" id="rfRemarks" name="remarks" rows="2" maxlength="500" placeholder="Describe where this amount is managed..."></textarea>
+                        <div class="field-error" id="errRF_remarks"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveRideFinBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="rideFinSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Entry
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- History Modal -->
+    <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Ride History — <span id="historyDriverName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="historySummary" class="mb-2"></div>
+                    <div id="historyList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Meter Image Preview Modal -->
+    <div class="modal fade" id="meterModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-speedometer me-2"></i>Meter Reading</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="meterFullImage" src="" alt="Meter reading" style="max-width:100%; border-radius:10px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const CAN_EDIT = {{ 'true' if me_type in [1, 5] else 'false' }};
+
+        function showToast(message, type) {
+            const area = document.getElementById('toastArea');
+            const el = document.createElement('div');
+            el.className = `toast align-items-center text-bg-${type === 'success' ? 'success' : 'danger'} border-0 show`;
+            el.setAttribute('role', 'alert');
+            el.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+            area.appendChild(el);
+            setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 4200);
+        }
+
+        function makeModal(id) {
+            const el = document.getElementById(id);
+            return el && bootstrap.Modal ? new bootstrap.Modal(el) : null;
+        }
+
+        const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+        function submitJson(payload, url, modal, btnId, spinnerId, errSet, errGeneral, failMsg) {
+            const body = payload instanceof FormData ? payload : new FormData(payload);
+            const btn = document.getElementById(btnId);
+            const spinner = document.getElementById(spinnerId);
+            btn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            fetch(url, { method: 'POST', body })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+                    if (data.success) {
+                        if (modal) modal.hide();
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        Object.entries(data.errors || {}).forEach(([k, v]) => errSet(k, v));
+                        const gen = document.getElementById(errGeneral);
+                        gen.textContent = data.message || failMsg;
+                        gen.classList.remove('d-none');
+                        showToast(data.message || failMsg, 'error');
+                    }
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'))
+                .finally(() => {
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                });
+        }
+
+        // ----- Tabs -----
+        const tabDrivers = document.getElementById('tabDrivers');
+        const tabLedger = document.getElementById('tabLedger');
+        const tabFinance = document.getElementById('tabFinance');
+        const driversPanel = document.getElementById('driversPanel');
+        const ledgerPanel = document.getElementById('ledgerPanel');
+        const financePanel = document.getElementById('financePanel');
+
+        function activateTab(which) {
+            tabDrivers.classList.toggle('active', which === 'drivers');
+            tabLedger.classList.toggle('active', which === 'ledger');
+            if (tabFinance) tabFinance.classList.toggle('active', which === 'finance');
+            driversPanel.classList.toggle('d-none', which !== 'drivers');
+            ledgerPanel.classList.toggle('d-none', which !== 'ledger');
+            if (financePanel) financePanel.classList.toggle('d-none', which !== 'finance');
+            applyRideFilter();
+        }
+        tabDrivers.addEventListener('click', () => activateTab('drivers'));
+        tabLedger.addEventListener('click', () => activateTab('ledger'));
+        if (tabFinance) tabFinance.addEventListener('click', () => activateTab('finance'));
+
+        // ----- Search across the active panel -----
+        const rideSearch = document.getElementById('rideSearch');
+        let searchScheduled = false;
+
+        function collectRows(panelId) {
+            const rows = Array.from(document.querySelectorAll('#' + panelId + ' tbody tr'));
+            const emptyRow = rows.find(r => r.querySelector('.empty-state'));
+            return {
+                dataRows: rows.filter(r => r !== emptyRow)
+                    .map(row => ({ row, hay: row.textContent.toLowerCase() })),
+                emptyRow,
+                defaultMsg: emptyRow ? emptyRow.querySelector('p').textContent : ''
+            };
+        }
+        const driverRows = collectRows('driversPanel');
+        const rideRowsData = collectRows('ledgerPanel');
+
+        function applyRideFilter() {
+            const scope = tabDrivers.classList.contains('active') ? driverRows : rideRowsData;
+            if (!rideSearch) return;
+            const q = rideSearch.value.trim().toLowerCase();
+            let visible = 0;
+            scope.dataRows.forEach(({ row, hay }) => {
+                const match = !q || hay.includes(q);
+                row.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            if (scope.emptyRow) {
+                const p = scope.emptyRow.querySelector('p');
+                if (!q) {
+                    p.textContent = scope.defaultMsg;
+                    scope.emptyRow.classList.toggle('d-none', scope.dataRows.length > 0);
+                } else if (visible === 0) {
+                    p.textContent = 'No records match your search.';
+                    scope.emptyRow.classList.remove('d-none');
+                } else {
+                    scope.emptyRow.classList.add('d-none');
+                }
+            }
+        }
+
+        if (rideSearch) {
+            rideSearch.addEventListener('input', function () {
+                if (searchScheduled) return;
+                searchScheduled = true;
+                requestAnimationFrame(() => { searchScheduled = false; applyRideFilter(); });
+            });
+        }
+
+        // ----- File field labels -----
+        document.querySelectorAll('.file-field input[type=file]').forEach(inp => {
+            const span = inp.parentElement.querySelector('label span');
+            if (!span) return;
+            if (!span.dataset.orig) span.dataset.orig = span.textContent;
+            inp.addEventListener('change', () => {
+                span.textContent = inp.files.length ? inp.files[0].name : span.dataset.orig;
+            });
+        });
+
+        // ----- Meter image preview -----
+        const meterModal = makeModal('meterModal');
+        document.addEventListener('click', e => {
+            const th = e.target.closest('.js-view-meter');
+            if (th && meterModal) {
+                document.getElementById('meterFullImage').src = th.dataset.full;
+                meterModal.show();
+            }
+        });
+
+        {% if me_type in [1, 5] or me_type == 3 %}
+        const addDriverModal = makeModal('addDriverModal');
+        const editDriverModal = makeModal('editDriverModal');
+        const addRideModal = makeModal('addRideModal');
+        const editRideModal = makeModal('editRideModal');
+        const historyModalEl = makeModal('historyModal');
+        let editingDriverId = null;
+        let editingRideId = null;
+
+        function setErr(map, k, v) { const box = map[k]; if (box) box.textContent = v || ''; }
+        function clearErrors(prefixes, keys, generalIds) {
+            prefixes.forEach(px => keys.forEach(k => setErr(ERR_BOXES, px + k, '')));
+            generalIds.forEach(id => {
+                const gen = document.getElementById(id);
+                if (gen) { gen.classList.add('d-none'); gen.textContent = ''; }
+            });
+        }
+        const ERR_BOXES = {};
+        document.querySelectorAll('.field-error[id^="err"]').forEach(b => ERR_BOXES[b.id] = b);
+        const DRIVER_KEYS = ['userid', 'aadharno', 'license_no', 'vehicle_no',
+                             'alt_phone', 'joiningdate', 'dlimage', 'aadharimage', 'driverimage'];
+        const RIDE_KEYS = ['driverid', 'ride_date', 'km_driven', 'meter_start', 'meter_end',
+                           'amount', 'remarks', 'meter_image'];
+
+        function openAddDriver() {
+            clearErrors(['err_'], DRIVER_KEYS, ['driverGeneralError']);
+            document.getElementById('addDriverForm').reset();
+            if (addDriverModal) addDriverModal.show();
+        }
+        document.getElementById('openDriverModal')?.addEventListener('click', e => {
+            e.preventDefault(); openAddDriver();
+        });
+
+        function openAddRide(btn) {
+            clearErrors(['errR_'], RIDE_KEYS, ['rideGeneralError']);
+            document.getElementById('addRideForm').reset();
+            document.getElementById('rDate').value = '{{ today }}';
+            if (btn?.dataset?.id) document.getElementById('rDriver').value = btn.dataset.id;
+            const lastMeter = parseFloat(btn?.dataset?.lastMeter);
+            if (!isNaN(lastMeter)) {
+                document.getElementById('rMStart').value = lastMeter;
+            }
+            if (addRideModal) addRideModal.show();
+        }
+
+        function validateDriverForm(pfx, errSetFn) {
+            let ok = true;
+            const uid = document.getElementById(pfx + 'User');
+            const aadhar = document.getElementById(pfx + 'Aadhar');
+            const lic = document.getElementById(pfx + 'License');
+            const alt = document.getElementById(pfx + 'AltPhone');
+            if (uid && !uid.value) { errSetFn('userid', 'Please select a driver user account.'); ok = false; }
+            if (!aadhar.value.trim().match(/^[0-9]{12}$/)) { errSetFn('aadharno', 'Aadhaar number must be exactly 12 digits.'); ok = false; }
+            if (lic.value.trim().length < 4) { errSetFn('license_no', 'Enter a valid driving licence number.'); ok = false; }
+            if (alt && alt.value.trim() && !alt.value.trim().match(/^[0-9]{10}$/)) { errSetFn('alt_phone', 'Alternate mobile must be exactly 10 digits.'); ok = false; }
+            return ok;
+        }
+
+        document.getElementById('addDriverForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearErrors(['err_'], DRIVER_KEYS, ['driverGeneralError']);
+            if (!validateDriverForm('d', (k, v) => setErr(ERR_BOXES, 'err_' + k, v))) return;
+            submitJson(this, '{{ url_for("create_driver") }}', addDriverModal,
+                'saveDriverBtn', 'driverSpinner',
+                (k, v) => setErr(ERR_BOXES, 'err_' + k, v), 'driverGeneralError', 'Could not save the driver.');
+        });
+
+        document.querySelectorAll('.js-edit-driver').forEach(btn => {
+            btn.addEventListener('click', () => {
+                editingDriverId = btn.dataset.id;
+                clearErrors(['errEd_'], DRIVER_KEYS.filter(k => k !== 'userid'), ['editDriverGeneralError']);
+                document.getElementById('edNameLabel').textContent = btn.dataset.name;
+                document.getElementById('edUserName').value = btn.dataset.name;
+                document.getElementById('edAadhar').value = btn.dataset.aadhar || '';
+                document.getElementById('edLicense').value = btn.dataset.license || '';
+                document.getElementById('edVehicle').value = btn.dataset.vehicle || '';
+                document.getElementById('edAltPhone').value = btn.dataset.altphone || '';
+                document.getElementById('edAddress').value = btn.dataset.address || '';
+                document.getElementById('edJoinDate').value = btn.dataset.joining || '';
+                const lbl = has => has ? ' (replace)' : ' (not uploaded)';
+                document.getElementById('edDlLabel').textContent = 'Licence Image' + lbl(btn.dataset.hasDl === '1');
+                document.getElementById('edAadharLabel').textContent = 'Aadhaar Image' + lbl(btn.dataset.hasAadharimg === '1');
+                document.getElementById('edPhotoLabel').textContent = 'Driver Photo' + lbl(btn.dataset.hasPhoto === '1');
+                if (editDriverModal) editDriverModal.show();
+            });
+        });
+
+        document.getElementById('editDriverForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearErrors(['errEd_'], DRIVER_KEYS, ['editDriverGeneralError']);
+            if (!validateDriverForm('ed', (k, v) => setErr(ERR_BOXES, 'errEd_' + k, v))) return;
+            const fd = new FormData(this);
+            fd.set('driver_id', editingDriverId);
+            fd.delete('userid');
+            submitJson(fd, '{{ url_for("update_driver") }}', editDriverModal,
+                'saveDriverEditBtn', 'driverEditSpinner',
+                (k, v) => setErr(ERR_BOXES, 'errEd_' + k, v), 'editDriverGeneralError', 'Could not update the driver.');
+        });
+
+        document.querySelectorAll('.js-add-ride').forEach(btn => {
+            btn.addEventListener('click', () => openAddRide(btn));
+        });
+
+        function validateRideForm(pfx, errSetFn) {
+            let ok = true;
+            const drv = document.getElementById(pfx + 'Driver');
+            const km = parseFloat(document.getElementById(pfx + 'Km').value);
+            const amtRaw = document.getElementById(pfx + 'Amount').value;
+            if (!drv.value) { errSetFn('driverid', 'Please select a driver.'); ok = false; }
+            if (document.getElementById(pfx + 'Km').value === '' || isNaN(km) || km < 0) {
+                errSetFn('km_driven', 'Enter valid kilometres driven.'); ok = false;
+            }
+            if (amtRaw === '' || isNaN(parseFloat(amtRaw)) || parseFloat(amtRaw) < 0) {
+                errSetFn('amount', 'Enter a valid amount.'); ok = false;
+            }
+            const msV = document.getElementById(pfx + 'MStart').value;
+            const meV = document.getElementById(pfx + 'MEnd').value;
+            if (msV !== '' && meV !== '') {
+                const ms = parseFloat(msV), me = parseFloat(meV);
+                if (!isNaN(ms) && !isNaN(me) && me < ms) {
+                    errSetFn('meter_end', 'End reading cannot be less than start reading.'); ok = false;
+                } else if (!isNaN(ms) && !isNaN(me) && !isNaN(km) && Math.abs((me - ms) - km) > 0.05) {
+                    errSetFn('km_driven', `KM driven should equal end − start (= ${(me - ms).toFixed(1)} km).`); ok = false;
+                }
+            }
+            return ok;
+        }
+
+        // ----- Live KM Driven = Meter End − Meter Start -----
+        function bindLiveKmCalc(pfx, errPx) {
+            const msEl = document.getElementById(pfx + 'MStart');
+            const meEl = document.getElementById(pfx + 'MEnd');
+            const kmEl = document.getElementById(pfx + 'Km');
+            if (!msEl || !meEl || !kmEl) return;
+
+            const recalc = () => {
+                setErr(ERR_BOXES, errPx + 'meter_start', '');
+                setErr(ERR_BOXES, errPx + 'meter_end', '');
+                setErr(ERR_BOXES, errPx + 'km_driven', '');
+                const ms = parseFloat(msEl.value);
+                const me = parseFloat(meEl.value);
+                if (msEl.value === '' || meEl.value === '' || isNaN(ms) || isNaN(me)) return;
+
+                if (ms < 0 || me < 0) {
+                    kmEl.value = '';
+                    setErr(ERR_BOXES, errPx + 'meter_end', 'Meter readings cannot be negative.');
+                    return;
+                }
+                if (me < ms) {
+                    kmEl.value = '';
+                    setErr(ERR_BOXES, errPx + 'meter_end', 'End reading cannot be less than start reading.');
+                    return;
+                }
+                kmEl.value = Math.round((me - ms) * 10) / 10;
+            };
+
+            [msEl, meEl].forEach(el => {
+                el.addEventListener('input', recalc);
+                el.addEventListener('change', recalc);
+            });
+        }
+        bindLiveKmCalc('r', 'errR_');
+        bindLiveKmCalc('er', 'errE_');
+
+        ['rKm', 'erKm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', () => {
+                const v = parseFloat(el.value);
+                if (!isNaN(v) && v < 0) {
+                    el.value = '';
+                    setErr(ERR_BOXES, id === 'rKm' ? 'errR_km_driven' : 'errE_km_driven',
+                           'KM driven cannot be negative.');
+                } else {
+                    setErr(ERR_BOXES, id === 'rKm' ? 'errR_km_driven' : 'errE_km_driven', '');
+                }
+            });
+        });
+
+        document.getElementById('addRideForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearErrors(['errR_'], RIDE_KEYS, ['rideGeneralError']);
+            const errSet = (k, v) => setErr(ERR_BOXES, 'errR_' + k, v);
+            if (!validateRideForm('r', errSet)) return;
+            const meterInput = document.getElementById('rMeterImg');
+            if (!meterInput.files.length) {
+                errSet('meter_image', 'Meter reading image is required.');
+                return;
+            }
+            submitJson(this, '{{ url_for("add_ride") }}', addRideModal,
+                'saveRideBtn', 'rideSpinner', errSet, 'rideGeneralError', 'Could not record the ride.');
+        });
+
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.js-edit-ride');
+            if (!btn) return;
+            const histEl = document.getElementById('historyModal');
+            editFromHistory = !!(histEl && histEl.classList.contains('show') && historyModalEl);
+            if (editFromHistory) historyModalEl.hide();
+            editingRideId = btn.dataset.id;
+            clearErrors(['errE_'], RIDE_KEYS, ['editRideGeneralError']);
+            document.getElementById('erDriver').value = btn.dataset.driver
+                || (lastHistoryTrigger ? lastHistoryTrigger.dataset.id : '');
+            document.getElementById('erDate').value = btn.dataset.date || '';
+            document.getElementById('erKm').value = btn.dataset.km || '';
+            document.getElementById('erMStart').value = btn.dataset.mstart || '';
+            document.getElementById('erMEnd').value = btn.dataset.mend || '';
+            document.getElementById('erAmount').value = btn.dataset.amount || '';
+            document.getElementById('erRemarks').value = btn.dataset.remarks || '';
+            document.getElementById('erMeterLabel').textContent =
+                'Odometer Photo (' + (btn.dataset.hasMeter === '1' ? 'replace existing' : 'none uploaded — required') + ')';
+            if (editRideModal) editRideModal.show();
+        });
+
+        document.getElementById('editRideForm')?.addEventListener('submit', () => {
+            suppressHistoryReopen = true;
+        });
+        document.getElementById('editRideModal')?.addEventListener('hidden.bs.modal', () => {
+            if (editFromHistory && !suppressHistoryReopen && lastHistoryTrigger) {
+                lastHistoryTrigger.click();
+            }
+            editFromHistory = false;
+            suppressHistoryReopen = false;
+        });
+
+        document.getElementById('editRideForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearErrors(['errE_'], RIDE_KEYS, ['editRideGeneralError']);
+            const errSet = (k, v) => setErr(ERR_BOXES, 'errE_' + k, v);
+            if (!validateRideForm('er', errSet)) return;
+            const fd = new FormData(this);
+            fd.set('ride_id', editingRideId);
+            submitJson(fd, '{{ url_for("update_ride") }}', editRideModal,
+                'saveRideEditBtn', 'rideEditSpinner', errSet, 'editRideGeneralError', 'Could not update the ride.');
+        });
+
+        // ----- History -----
+        let lastHistoryTrigger = null;
+        let editFromHistory = false;
+        let suppressHistoryReopen = false;
+
+        document.querySelectorAll('.js-history').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                lastHistoryTrigger = btn;
+                document.getElementById('historyDriverName').textContent = btn.dataset.name;
+                const list = document.getElementById('historyList');
+                list.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-info"></div></div>';
+                document.getElementById('historySummary').innerHTML = '';
+                if (historyModalEl) historyModalEl.show();
+                try {
+                    const r2 = await fetch(`/driver/rides/${btn.dataset.id}`);
+                    const data = await r2.json();
+                    if (!data.success) { list.innerHTML = `<div class="alert alert-danger mb-0">${data.message}</div>`; return; }
+                    const d = data.driver;
+                    const totKm = data.rides.reduce((s, r) => s + (parseFloat(r.km_driven) || 0), 0);
+                    const totAmt = data.rides.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                    document.getElementById('historySummary').innerHTML = `
+                        <div class="d-flex flex-wrap gap-3 small">
+                            <span><i class="bi bi-telephone me-1"></i>${d.phone}${d.alt_phone ? ' / ' + d.alt_phone : ''}</span>
+                            <span><i class="bi bi-card-heading me-1"></i>${d.license_no}</span>
+                            <span><i class="bi bi-truck me-1"></i>${d.vehicle_no || '—'}</span>
+                            <span class="ms-auto"><b>${data.rides.length}</b> rides • <b>${totKm.toFixed(1)}</b> km • <b class="text-success">₹${totAmt.toFixed(2)}</b></span>
+                        </div>`;
+                    const actHead = CAN_EDIT ? '<th>Actions</th>' : '';
+                    list.innerHTML = data.rides.length ? `
+                        <div class="table-responsive"><table class="table users-table align-middle mb-0">
+                        <thead><tr><th>#</th><th>Date</th><th>Meter</th><th>KM</th><th>Amount</th><th>Meter Image</th><th>Remarks</th>${actHead}</tr></thead>
+                        <tbody>${data.rides.map((r, i) => {
+                            const actCell = CAN_EDIT ? `
+                                <td>
+                                    <div class="d-inline-flex gap-2 actions-cell">
+                                        <button type="button" class="btn-action edit js-edit-ride"
+                                                data-id="${r.id}" data-date="${r.ride_date}"
+                                                data-km="${r.km_driven ?? ''}" data-mstart="${r.meter_start ?? ''}"
+                                                data-mend="${r.meter_end ?? ''}" data-amount="${r.amount ?? ''}"
+                                                data-has-meter="${r.meter_image ? '1' : '0'}"
+                                                data-remarks="${escAttr(r.remarks || '')}" title="Edit ride"><i class="bi bi-pencil-square"></i></button>
+                                        <button type="button" class="btn-action del js-del-ride" data-id="${r.id}" title="Delete ride"><i class="bi bi-trash3"></i></button>
+                                    </div>
+                                </td>` : '';
+                            return `
+                            <tr>
+                                <td class="cell-id">${i + 1}</td>
+                                <td class="cell-muted">${r.ride_date || '—'}
+                                    ${r.recorded_on ? `<div class="small" style="color:#94a3b8;"><i class="bi bi-clock me-1"></i>${r.recorded_on}</div>` : ''}
+                                </td>
+                                <td class="mono cell-muted">${r.meter_start ?? '—'} → ${r.meter_end ?? '—'}</td>
+                                <td>${(parseFloat(r.km_driven) || 0).toFixed(1)} km</td>
+                                <td class="money green">₹ ${(parseFloat(r.amount) || 0).toFixed(2)}</td>
+                                <td>${r.meter_image ? `<img src="/static/${r.meter_image}" class="meter-thumb js-view-meter" data-full="/static/${r.meter_image}">` : '—'}</td>
+                                <td class="cell-muted">${r.remarks || '—'}</td>
+                                ${actCell}
+                            </tr>`;
+                        }).join('')}
+                        </tbody></table></div>`
+                        : '<div class="empty-state py-4"><i class="bi bi-journal-x"></i><p class="mb-0">No rides recorded yet.</p></div>';
+                } catch (_) {
+                    list.innerHTML = '<div class="alert alert-danger mb-0">Could not load history.</div>';
+                }
+            });
+        });
+
+        // ----- Rides Finance: describe amounts -----
+        let editingRideFinId = null;
+        const rideFinModal = makeModal('rideFinModal');
+        const RF_KEYS = ['category', 'amount', 'bank_name', 'fin_user', 'entry_date', 'fd_no', 'remarks'];
+        const setRfErr = (k, v) => setErr(ERR_BOXES, 'errRF_' + k, v);
+
+        function openRideFinAdd() {
+            editingRideFinId = null;
+            clearErrors(['errRF_'], RF_KEYS, ['rideFinGeneralError']);
+            document.getElementById('rideFinForm').reset();
+            document.getElementById('rfDate').value = '{{ today }}';
+            document.getElementById('rideFinModalTitle').innerHTML =
+                '<i class="bi bi-journal-plus me-2"></i>Describe Ride Amount';
+            if (rideFinModal) rideFinModal.show();
+        }
+
+        function validateRfForm(errSetFn) {
+            let ok = true;
+            const typeSel = document.getElementById('rfType');
+            if (!typeSel.value) { errSetFn('category', 'Please select the managed amount type.'); ok = false; }
+            const amt = parseFloat(document.getElementById('rfAmount').value);
+            if (document.getElementById('rfAmount').value === '' || isNaN(amt) || amt <= 0) {
+                errSetFn('amount', 'Enter a valid amount greater than zero.'); ok = false;
+            }
+            if (!document.getElementById('rfBank').value) { errSetFn('bank_name', 'Please select a bank.'); ok = false; }
+            if (!document.getElementById('rfUser').value) { errSetFn('fin_user', 'Please select the user account.'); ok = false; }
+            const fdVal = document.getElementById('rFdNo').value.trim();
+            const typeText = typeSel.value ? typeSel.options[typeSel.selectedIndex].text : '';
+            if (/fixed deposit/i.test(typeText) && !fdVal) {
+                errSetFn('fd_no', 'FD No is required for Fixed Deposit entries.'); ok = false;
+            }
+            return ok;
+        }
+
+        document.getElementById('openRideFinModal')?.addEventListener('click', e => {
+            e.preventDefault(); openRideFinAdd();
+        });
+
+        function flashTarget(el) {
+            if (!el) return;
+            el.classList.remove('flash-target');
+            void el.offsetWidth;
+            el.classList.add('flash-target');
+        }
+        document.getElementById('cardTotal')?.addEventListener('click', () => {
+            const t = document.getElementById('finBreakdown');
+            if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'start' }); flashTarget(t); }
+        });
+        document.getElementById('cardManaged')?.addEventListener('click', () => {
+            const t = document.getElementById('describedCard');
+            if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'start' }); flashTarget(t); }
+        });
+        document.getElementById('cardUnmanaged')?.addEventListener('click', () => {
+            const avail = parseFloat(document.getElementById('rfAvailAmount')?.dataset.avail || '0');
+            if (!isNaN(avail) && avail <= 0.004) {
+                showToast('Unmanaged balance is ₹0 — every ride amount is already described.', 'error');
+                return;
+            }
+            openRideFinAdd();
+        });
+
+        document.querySelectorAll('.js-rf-edit').forEach(btn => {
+            btn.addEventListener('click', () => {
+                editingRideFinId = btn.dataset.id;
+                clearErrors(['errRF_'], RF_KEYS, ['rideFinGeneralError']);
+                document.getElementById('rideFinModalTitle').innerHTML =
+                    '<i class="bi bi-journal-pencil me-2"></i>Edit Described Amount';
+                document.getElementById('rfType').value = btn.dataset.type || '';
+                document.getElementById('rfAmount').value = btn.dataset.amount || '';
+                document.getElementById('rfBank').value = btn.dataset.bank || '';
+                document.getElementById('rfUser').value = btn.dataset.user || '';
+                document.getElementById('rfDate').value = btn.dataset.date || '{{ today }}';
+                document.getElementById('rFdNo').value = btn.dataset.fd || '';
+                document.getElementById('rfRemarks').value = btn.dataset.remarks || '';
+                if (rideFinModal) rideFinModal.show();
+            });
+        });
+
+        document.getElementById('rideFinForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearErrors(['errRF_'], RF_KEYS, ['rideFinGeneralError']);
+            const errSet = (k, v) => setRfErr(k, v);
+            if (!validateRfForm(errSet)) return;
+            const fd = new FormData(this);
+            const url = editingRideFinId
+                ? '{{ url_for("ride_finance_update") }}'
+                : '{{ url_for("ride_finance_create") }}';
+            if (editingRideFinId) fd.set('id', editingRideFinId);
+            submitJson(fd, url, rideFinModal,
+                'saveRideFinBtn', 'rideFinSpinner', errSet,
+                'rideFinGeneralError', 'Could not save the entry.');
+        });
+
+        // ----- Deletes -----
+        document.addEventListener('click', e => {
+            const dd = e.target.closest('.js-del-driver');
+            if (dd) {
+                if (!confirm(`Delete driver ${dd.dataset.name} and ALL their ride records? This cannot be undone.`)) return;
+                const fd = new FormData(); fd.set('driver_id', dd.dataset.id);
+                fetch('{{ url_for("delete_driver") }}', { method: 'POST', body: fd })
+                    .then(async res => { let d; try { d = await res.json(); } catch (_) { d = { success: false }; }
+                        if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 900); }
+                        else showToast(d.message || 'Could not delete.', 'error'); })
+                    .catch(() => showToast('Network error.', 'error'));
+                return;
+            }
+            const rd = e.target.closest('.js-del-ride');
+            if (rd) {
+                if (!confirm('Delete this ride record?')) return;
+                const fd = new FormData(); fd.set('ride_id', rd.dataset.id);
+                fetch('{{ url_for("delete_ride") }}', { method: 'POST', body: fd })
+                    .then(async res => { let d; try { d = await res.json(); } catch (_) { d = { success: false }; }
+                        if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 900); }
+                        else showToast(d.message || 'Could not delete.', 'error'); })
+                    .catch(() => showToast('Network error.', 'error'));
+                return;
+            }
+            const rf = e.target.closest('.js-rf-del');
+            if (rf) {
+                if (!confirm('Delete this described amount entry?')) return;
+                const fd = new FormData(); fd.set('id', rf.dataset.id);
+                fetch('{{ url_for("ride_finance_delete") }}', { method: 'POST', body: fd })
+                    .then(async res => { let d; try { d = await res.json(); } catch (_) { d = { success: false }; }
+                        if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 900); }
+                        else showToast(d.message || 'Could not delete.', 'error'); })
+                    .catch(() => showToast('Network error.', 'error'));
+            }
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <title>Personal Data Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar-custom">
+        <div class="container-fluid px-3 px-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand-custom">
+                    <span class="brand-icon"><i class="bi bi-list"></i></span>
+                    <span> |  Personal Data Management</span>
+                </a>
+
+                <div class="d-flex align-items-center gap-3">
+                    <!-- <a href="{{ url_for('finance_management') }}" class="header-btn"><i class="bi bi-bank2"></i>Finance Management</a> -->
+                    <!-- <a href="#" class="header-btn" id="navLedger"><i class="bi bi-journal-text"></i>Rent Ledger</a> -->
+                                     <div class="user-greeting">
+                        <span class="user-avatar-sm"><i class="bi bi-person-fill"></i></span>
+                        Hello, {{ session['firstname'] }}
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">
+                        <i class="bi bi-box-arrow-right"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container-fluid px-3 px-lg-4 pt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }} mb-0">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="page-layout container-fluid px-3 px-lg-4">
+        <aside class="sidebar-panel offcanvas-lg offcanvas-start" tabindex="-1" id="filterSidebar" aria-label="Filters panel">
+            <div class="offcanvas-header d-lg-none pb-2">
+                <h5 class="offcanvas-title text-white mb-0"><i class="bi bi-funnel me-2"></i>Filters</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body p-0">
+                <div class="sidebar-inner">
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-funnel me-2"></i>Filters</h6>
+                        <form method="get" action="{{ url_for('finance_management') }}">
+                            <label class="filter-label" for="filterType">Managed Amount Type</label>
+                            <select class="form-select dark-select" id="filterType" name="type">
+                                <option value="" {% if not filter_type %}selected{% endif %}>All Types</option>
+                                {% for t in types %}
+                                    <option value="{{ t['id'] }}" {% if filter_type == t['id']|string %}selected{% endif %}>{{ t['type_name'] }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <label class="filter-label mt-2" for="filterBank">Bank</label>
+                            <select class="form-select dark-select" id="filterBank" name="bank">
+                                <option value="" {% if not filter_bank %}selected{% endif %}>All Banks</option>
+                                {% for b in banks %}
+                                    <option value="{{ b['bank_name'] }}" {% if filter_bank == b['bank_name'] %}selected{% endif %}>{{ b['bank_name'] }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <button type="submit" class="btn btn-apply-filter w-100 mt-3">
+                                <i class="bi bi-check2-circle me-1"></i>Apply Filter
+                            </button>
+                            <a href="{{ url_for('finance_management') }}" class="btn btn-reset-filter w-100 mt-2">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                            </a>
+                        </form>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-graph-up me-2"></i>Overview</h6>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-safe me-2"></i>Total Rental Amount</span>
+                            <span class="stat-value text-green">₹ {{ '{:,.0f}'.format(totals.total_rental or 0) }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-piggy-bank me-2"></i>Managed (Described)</span>
+                            <span class="stat-value">₹ {{ '{:,.0f}'.format(totals.managed or 0) }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-exclamation-diamond me-2"></i>Unmanaged</span>
+                            <span class="stat-value">₹ {{ '{:,.0f}'.format(totals.unmanaged or 0) }}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label"><i class="bi bi-journal-text me-2"></i>Entries Shown</span>
+                            <span class="stat-value">{{ entries|length }}</span>
+                        </div>
+                    </div>
+
+                    <hr class="sidebar-divider">
+
+                    <div class="sidebar-section">
+                        <h6 class="sidebar-title"><i class="bi bi-link-45deg me-2"></i>Quick Links</h6>
+                        <div class="side-links">
+                            <a href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i>Dashboard</a>
+                            <a href="{{ url_for('rental_management') }}"><i class="bi bi-building"></i>Rental Management</a>
+                            <a href="{{ url_for('rides_management') }}"><i class="bi bi-car-front"></i>Rides Management</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <button class="btn btn-filter-toggle d-lg-none mb-3" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterSidebar">
+                <i class="bi bi-funnel me-1"></i>Filters
+            </button>
+
+            <div class="users-card">
+                <div class="dash-profile">
+                    <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
+                    <div>
+                        <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
+                        <div class="dp-email">{{ session['email'] }}</div>
+                    </div>
+                    <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
+                        <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name }}
+                    </span>
+                </div>
+
+                <div class="stats-grid three">
+                    <div class="stat-card indigo">
+                        <div class="sc-icon"><i class="bi bi-safe-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(totals.total_rental or 0) }}</div>
+                            <div class="sc-label">Total Rental Amount<small class="sc-sub">All time rent collected</small></div>
+                        </div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="sc-icon"><i class="bi bi-piggy-bank-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(totals.managed or 0) }}</div>
+                            <div class="sc-label">Managed Amount<small class="sc-sub">Described — allocated below</small></div>
+                        </div>
+                    </div>
+                    <div class="stat-card pink">
+                        <div class="sc-icon"><i class="bi bi-exclamation-diamond-fill"></i></div>
+                        <div class="sc-body">
+                            <div class="sc-value">₹ {{ '{:,.0f}'.format(totals.unmanaged or 0) }}</div>
+                            <div class="sc-label">Unmanaged Amount<small class="sc-sub">Not described yet (Total − Managed)</small></div>
+                        </div>
+                    </div>
+                </div>
+
+                {% set described_pct = ((totals.managed or 0) / (totals.total_rental or 0) * 100) | round(1) if totals.total_rental else 0 %}
+                <div class="fin-progress" title="{{ described_pct }}% of the total rental amount is described">
+                    <div class="fin-progress-bar" style="width: {{ [described_pct, 100] | min }}%"></div>
+                </div>
+                <small class="fin-progress-note"><i class="bi bi-check2-circle me-1"></i>{{ described_pct }}% described · When Managed = Total Rental, the amount is fully described.</small>
+
+                <div class="rm-head">
+                    <div class="rm-tabs" role="tablist">
+                        <button type="button" class="rm-tab active" id="tabEntries">
+                            <i class="bi bi-journal-text me-1"></i>Managed Entries <span class="rm-count">{{ entries|length }}</span>
+                        </button>
+                        {% if me_type in [1, 2, 5] %}
+                        <button type="button" class="rm-tab" id="tabMasters">
+                            <i class="bi bi-collection me-1"></i>Masters <span class="rm-count">{{ types|length + banks|length }}</span>
+                        </button>
+                        {% endif %}
+                    </div>
+                    <div class="users-head-right">
+                        {% if me_type in [1, 5] %}
+                            <a href="{{ url_for('finance_download') }}" class="btn-add-user dl-link"><i class="bi bi-file-earmark-pdf"></i>Download Report</a>
+                        {% endif %}
+                        <input type="text" id="entrySearch" class="table-search" placeholder="Search entries..." autocomplete="off">
+                        {% if me_type in [1, 5] %}
+                            <a href="#" class="btn-add-user" id="openEntryModal"><i class="bi bi-plus-lg"></i>Add Entry</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="rm-panel" id="entriesPanel">
+                    <div class="table-responsive">
+                        <table class="table users-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Bank</th>
+                                    <th>FD No</th>
+                                    <th>User Account</th>
+                                    <th>Remarks</th>
+                                    <th>Date</th>
+                                    {% if me_type in [1, 5] %}<th>Actions</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if entries %}
+                                    {% for e in entries %}
+                                        <tr>
+                                            <td class="cell-id">{{ loop.index }}</td>
+                                            <td>
+                                                {% if e['type_name'] == 'Fixed Deposit' %}
+                                                    <span class="badge-soft indigo"><i class="bi bi-safe"></i>{{ e['type_name'] }}</span>
+                                                {% else %}
+                                                    <span class="badge-soft cyan"><i class="bi bi-journal-text"></i>{{ e['type_name'] }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td><span class="money green">₹ {{ '{:,.2f}'.format(e['amount']) }}</span></td>
+                                            <td><span class="badge-soft gray"><i class="bi bi-bank"></i>{{ e['bank_name'] }}</span></td>
+                                            <td class="cell-muted fd-cell" title="{{ e['fd_no'] or '' }}">{{ e['fd_no'] or '—' }}</td>
+                                            <td>
+                                                {% if e['firstname'] %}
+                                                    <div class="user-cell">
+                                                        <span class="user-avatar-sm2">{{ e['firstname'][0]|upper }}{{ e['lastname'][0]|upper if e['lastname'] else '' }}</span>
+                                                        <div class="user-meta">
+                                                            <span class="user-name">{{ e['firstname'] }} {{ e['lastname'] or '' }}</span>
+                                                            <small class="user-sub">{{ e['email'] }}</small>
+                                                        </div>
+                                                    </div>
+                                                {% else %}
+                                                    <span class="badge-soft gray"><i class="bi bi-dash-circle"></i>N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="remark-cell" title="{{ e['remarks'] or '' }}">{{ e['remarks'] or '—' }}</td>
+                                            <td class="cell-muted">{{ e['entry_date'].strftime('%d %b %Y') if e['entry_date'] else '—' }}</td>
+                                            {% if me_type in [1, 5] %}
+                                            <td>
+                                                <div class="paid-wrap">
+                                                    <button type="button" class="btn-action js-edit-entry" title="Edit entry"
+                                                            data-id="{{ e['id'] }}"
+                                                            data-category="{{ e['type_id'] }}"
+                                                            data-amount="{{ e['amount'] }}"
+                                                            data-bank="{{ e['bank_name'] }}"
+                                                            data-fd="{{ e['fd_no'] or '' }}"
+                                                            data-user="{{ e['user_id'] or '' }}"
+                                                            data-remarks="{{ e['remarks'] or '' }}"
+                                                            data-date="{{ e['entry_date'].isoformat() if e['entry_date'] else '' }}">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    <button type="button" class="btn-action del js-del-entry" title="Delete entry" data-id="{{ e['id'] }}">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            {% endif %}
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="{{ 9 if me_type in [1, 5] else 8 }}">
+                                            <div class="empty-state">
+                                                <i class="bi bi-inbox"></i>
+                                                <p class="mb-0">No managed entries yet.{% if me_type in [1, 5] %} Click "Add Entry" to describe the rental amount (Fixed Deposit / Others).{% endif %}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {% if me_type in [1, 2, 5] %}
+                <div class="rm-panel d-none" id="mastersPanel">
+                    <div class="masters-grid">
+                        <div class="master-card">
+                            <div class="mc-head">
+                                <h6><i class="bi bi-collection me-2"></i>Managed Amount Types</h6>
+                                <button type="button" class="btn-add-user btn-sm-master js-master-add" data-kind="type"><i class="bi bi-plus-lg"></i>Add</button>
+                            </div>
+                            <div class="mc-body">
+                                {% for t in types %}
+                                <div class="master-row">
+                                    <span class="mr-name"><i class="bi bi-safe me-2"></i>{{ t['type_name'] }}</span>
+                                    <span class="master-actions">
+                                        <button type="button" class="btn-action js-master-edit" data-kind="type" data-id="{{ t['id'] }}" data-name="{{ t['type_name'] }}" title="Rename"><i class="bi bi-pencil-square"></i></button>
+                                        {% if me_type in [1, 5] %}
+                                        <button type="button" class="btn-action del js-master-del" data-kind="type" data-id="{{ t['id'] }}" title="Delete"><i class="bi bi-trash3"></i></button>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="master-card">
+                            <div class="mc-head">
+                                <h6><i class="bi bi-bank me-2"></i>Banks</h6>
+                                <button type="button" class="btn-add-user btn-sm-master js-master-add" data-kind="bank"><i class="bi bi-plus-lg"></i>Add</button>
+                            </div>
+                            <div class="mc-body mc-body-scroll">
+                                {% for b in banks %}
+                                <div class="master-row">
+                                    <span class="mr-name"><i class="bi bi-bank me-2"></i>{{ b['bank_name'] }}</span>
+                                    <span class="master-actions">
+                                        <button type="button" class="btn-action js-master-edit" data-kind="bank" data-id="{{ b['id'] }}" data-name="{{ b['bank_name'] }}" title="Rename"><i class="bi bi-pencil-square"></i></button>
+                                        {% if me_type in [1, 5] %}
+                                        <button type="button" class="btn-action del js-master-del" data-kind="bank" data-id="{{ b['id'] }}" title="Delete"><i class="bi bi-trash3"></i></button>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+    {% if me_type in [1, 5] %}
+    <!-- Add Entry Modal -->
+    <div class="modal fade" id="addEntryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-piggy-bank me-2"></i>Describe Rental Amount</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addEntryForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="finGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="fCategory">Managed Amount Type</label>
+                                <select class="form-select dark-select" id="fCategory" name="category">
+                                    <option value="">Select type...</option>
+                                    {% for t in types %}
+                                        <option value="{{ t['id'] }}">{{ t['type_name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errF_category"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" step="0.01" min="1" class="form-control" id="fAmount" name="amount" placeholder="Amount">
+                                    <label for="fAmount"><i class="bi bi-currency-rupee me-1"></i>Amount (₹)</label>
+                                </div>
+                                <div class="field-error" id="errF_amount"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="date" class="form-control" id="fDate" name="entry_date" value="{{ today }}">
+                                    <label for="fDate"><i class="bi bi-calendar3 me-1"></i>Date</label>
+                                </div>
+                                <div class="field-error" id="errF_entry_date"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="fBank">Bank <small class="text-muted">(account fixed with)</small></label>
+                                <select class="form-select dark-select" id="fBank" name="bank_name">
+                                    <option value="">Select bank...</option>
+                                    {% for b in banks %}
+                                        <option value="{{ b['bank_name'] }}">{{ b['bank_name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errF_bank_name"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="fUser">User Account</label>
+                                <select class="form-select dark-select" id="fUser" name="fin_user">
+                                    <option value="">Select user account...</option>
+                                    {% for u in users %}
+                                        <option value="{{ u['id'] }}">{{ u['firstname'] }} {{ u['lastname'] or '' }} ({{ u['email'] }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errF_fin_user"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="fFdNo">FD No <small class="text-muted">(required for Fixed Deposit)</small></label>
+                                <input type="text" class="form-control" id="fFdNo" name="fd_no" maxlength="40" placeholder="e.g. FD-001234" autocomplete="off">
+                                <div class="field-error" id="errF_fd_no"></div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2" for="fRemarks" id="remarksLabel">Remarks <small id="remarksHint">(required for Others)</small></label>
+                        <textarea class="form-control" id="fRemarks" name="remarks" rows="2" maxlength="500" placeholder="Describe where this amount is managed..."></textarea>
+                        <div class="field-error" id="errF_remarks"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveEntryBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="finSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save Entry
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Entry Modal -->
+    <div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Managed Entry</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editEntryForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="editFinGeneralError"></div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eCategory">Managed Amount Type</label>
+                                <select class="form-select dark-select" id="eCategory" name="category">
+                                    <option value="">Select type...</option>
+                                    {% for t in types %}
+                                        <option value="{{ t['id'] }}">{{ t['type_name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errE_category"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="number" step="0.01" min="1" class="form-control" id="eAmount" name="amount" placeholder="Amount">
+                                    <label for="eAmount"><i class="bi bi-currency-rupee me-1"></i>Amount (₹)</label>
+                                </div>
+                                <div class="field-error" id="errE_amount"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-floating mt-3">
+                                    <input type="date" class="form-control" id="eDate" name="entry_date">
+                                    <label for="eDate"><i class="bi bi-calendar3 me-1"></i>Date</label>
+                                </div>
+                                <div class="field-error" id="errE_entry_date"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-0">
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eBank">Bank <small class="text-muted">(account fixed with)</small></label>
+                                <select class="form-select dark-select" id="eBank" name="bank_name">
+                                    <option value="">Select bank...</option>
+                                    {% for b in banks %}
+                                        <option value="{{ b['bank_name'] }}">{{ b['bank_name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errE_bank_name"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eUser">User Account</label>
+                                <select class="form-select dark-select" id="eUser" name="fin_user">
+                                    <option value="">Select user account...</option>
+                                    {% for u in users %}
+                                        <option value="{{ u['id'] }}">{{ u['firstname'] }} {{ u['lastname'] or '' }} ({{ u['email'] }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="field-error" id="errE_fin_user"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="filter-label" for="eFdNo">FD No <small class="text-muted">(required for Fixed Deposit)</small></label>
+                                <input type="text" class="form-control" id="eFdNo" name="fd_no" maxlength="40" placeholder="e.g. FD-001234" autocomplete="off">
+                                <div class="field-error" id="errE_fd_no"></div>
+                            </div>
+                        </div>
+
+                        <label class="filter-label mt-2" for="eRemarks" id="eremarksLabel">Remarks <small id="eremarksHint">(required for Others)</small></label>
+                        <textarea class="form-control" id="eRemarks" name="remarks" rows="2" maxlength="500" placeholder="Describe where this amount is managed..."></textarea>
+                        <div class="field-error" id="errE_remarks"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveEntryEditBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="finEditSpinner"></span>
+                            <i class="bi bi-check-lg me-1"></i>Update Entry
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if me_type in [1, 2, 5] %}
+    <!-- Master Item Modal -->
+    <div class="modal fade" id="masterModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm-master">
+            <div class="modal-content glass-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="masterModalTitle"><i class="bi bi-collection me-2"></i>Manage Master</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="masterForm" novalidate>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none py-2 px-3 mb-2" id="masterGeneralError"></div>
+                        <label class="filter-label" for="masterName" id="masterNameLabel">Name</label>
+                        <input type="text" class="form-control" id="masterName" maxlength="80" placeholder="Enter name">
+                        <div class="field-error" id="err_master_name"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel-user" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-save-user" id="saveMasterBtn">
+                            <span class="spinner-border spinner-border-sm d-none me-1" id="masterSpinner"></span>
+                            <i class="bi bi-save me-1"></i>Save
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const CAN_EDIT = {{ 'true' if me_type in [1, 5] else 'false' }};
+        let editingEntryId = '';
+        const FIN_TYPE_NAMES = { {% for t in types %}'{{ t['id'] }}': '{{ t['type_name'] }}'{{ ',' if not loop.last }}{% endfor %} };
+
+        function showToast(message, type) {
+            const area = document.getElementById('toastArea');
+            const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+            const el = document.createElement('div');
+            el.className = `app-toast ${type}`;
+            el.innerHTML = `<i class="bi ${icon}"></i><span></span>`;
+            el.querySelector('span').textContent = message;
+            area.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('hide-out');
+                setTimeout(() => el.remove(), 350);
+            }, 3500);
+        }
+
+        function makeModal(id) {
+            const el = document.getElementById(id);
+            try { return el ? new bootstrap.Modal(el) : null; } catch (err) { return null; }
+        }
+        const addEntryModal = makeModal('addEntryModal');
+        const editEntryModal = makeModal('editEntryModal');
+
+        function setFError(name, msg) {
+            const box = document.getElementById('errF_' + name);
+            if (box) box.textContent = msg || '';
+        }
+        function clearFinErrors() {
+            ['category', 'amount', 'bank_name', 'fin_user', 'remarks', 'entry_date'].forEach(k => setFError(k, ''));
+            const gen = document.getElementById('finGeneralError');
+            gen.classList.add('d-none'); gen.textContent = '';
+        }
+        function setEError(name, msg) {
+            const box = document.getElementById('errE_' + name);
+            if (box) box.textContent = msg || '';
+        }
+        function clearEditFinErrors() {
+            ['category', 'amount', 'bank_name', 'fin_user', 'remarks', 'entry_date'].forEach(k => setEError(k, ''));
+            const gen = document.getElementById('editFinGeneralError');
+            gen.classList.add('d-none'); gen.textContent = '';
+        }
+
+        document.getElementById('openEntryModal')?.addEventListener('click', e => {
+            e.preventDefault();
+            clearFinErrors();
+            document.getElementById('addEntryForm').reset();
+            document.getElementById('fDate').value = '{{ today }}';
+            syncRemarksHint('fCategory', 'remarksHint');
+            if (addEntryModal) addEntryModal.show();
+        });
+
+        function submitJson(body, url, modal, btnId, spinnerId, errSet, errGeneral, failMsg) {
+            const payload = body instanceof FormData ? body : new FormData(body);
+            const btn = document.getElementById(btnId);
+            const spinner = document.getElementById(spinnerId);
+            btn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            fetch(url, { method: 'POST', body: payload })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); }
+                    catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+
+                    if (data.success) {
+                        if (modal) modal.hide();
+                        showToast(data.message, 'success');
+                        setTimeout(() => window.location.reload(), 900);
+                    } else {
+                        if (data.errors) Object.entries(data.errors).forEach(([k, v]) => errSet(k, v));
+                        const gen = document.getElementById(errGeneral);
+                        gen.textContent = data.message || failMsg;
+                        gen.classList.remove('d-none');
+                        showToast(data.message || failMsg, 'error');
+                    }
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'))
+                .finally(() => {
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                });
+        }
+
+        function validateEntryForm(prefix, errSet) {
+            errSet('category', ''); errSet('amount', ''); errSet('bank_name', '');
+            errSet('fin_user', ''); errSet('remarks', ''); errSet('entry_date', '');
+            errSet('fd_no', '');
+            let ok = true;
+
+            const catEl = document.getElementById(prefix + 'Category');
+            const amtEl = document.getElementById(prefix + 'Amount');
+            const bankEl = document.getElementById(prefix + 'Bank');
+            const userEl = document.getElementById(prefix + 'User');
+            const remEl = document.getElementById(prefix + 'Remarks');
+            const fdEl = document.getElementById(prefix + 'FdNo');
+
+            if (!catEl.value || !FIN_TYPE_NAMES[catEl.value]) { errSet('category', 'Please select a managed amount type.'); ok = false; }
+            const amount = parseFloat(amtEl.value);
+            if (!amtEl.value || isNaN(amount) || amount <= 0) { errSet('amount', 'Enter a valid amount greater than 0.'); ok = false; }
+            if (!bankEl.value) { errSet('bank_name', 'Please select a bank.'); ok = false; }
+            if (!userEl.value) { errSet('fin_user', 'Please select the user account.'); ok = false; }
+            if (fdEl && fdEl.value.trim().length > 40) { errSet('fd_no', 'FD No must be within 40 characters.'); ok = false; }
+            else if (fdEl && FIN_TYPE_NAMES[catEl.value] === 'Fixed Deposit' && fdEl.value.trim().length < 2) {
+                errSet('fd_no', 'FD No is required when the type is Fixed Deposit.');
+                ok = false;
+            }
+            if (FIN_TYPE_NAMES[catEl.value] === 'Others' && remEl.value.trim().length < 3) {
+                errSet('remarks', 'Remarks are required when the type is Others.');
+                ok = false;
+            }
+            return ok;
+        }
+
+        function syncRemarksHint(catSelId, hintId) {
+            const hint = document.getElementById(hintId);
+            if (hint) hint.textContent = FIN_TYPE_NAMES[document.getElementById(catSelId).value] === 'Others' ? '(required)' : '(required for Others)';
+        }
+        [['fCategory', 'remarksHint'], ['eCategory', 'eremarksHint']].forEach(([sel, hint]) => {
+            const el = document.getElementById(sel);
+            if (el) el.addEventListener('change', () => syncRemarksHint(sel, hint));
+        });
+
+        document.getElementById('addEntryForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateEntryForm('f', setFError)) return;
+            submitJson(this, '{{ url_for("finance_create") }}', addEntryModal,
+                'saveEntryBtn', 'finSpinner', setFError, 'finGeneralError', 'Could not save the entry.');
+        });
+
+        function openEditEntry(btn) {
+            clearEditFinErrors();
+            document.getElementById('eCategory').value = btn.dataset.category || '';
+            document.getElementById('eAmount').value = btn.dataset.amount || '';
+            document.getElementById('eBank').value = btn.dataset.bank || '';
+            document.getElementById('eFdNo').value = btn.dataset.fd || '';
+            document.getElementById('eUser').value = btn.dataset.user || '';
+            document.getElementById('eRemarks').value = btn.dataset.remarks || '';
+            document.getElementById('eDate').value = btn.dataset.date || '';
+            syncRemarksHint('eCategory', 'eremarksHint');
+            editingEntryId = btn.dataset.id;
+            if (editEntryModal) editEntryModal.show();
+        }
+
+        document.getElementById('editEntryForm')?.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!validateEntryForm('e', setEError)) return;
+            const fd = new FormData(this);
+            fd.set('id', editingEntryId);
+            submitJson(fd, '{{ url_for("finance_update") }}', editEntryModal,
+                'saveEntryEditBtn', 'finEditSpinner', setEError, 'editFinGeneralError', 'Could not update the entry.');
+        });
+
+        document.addEventListener('click', e => {
+            if (!CAN_EDIT) return;
+            const ed = e.target.closest('.js-edit-entry');
+            if (ed) { openEditEntry(ed); return; }
+            const del = e.target.closest('.js-del-entry');
+            if (del) {
+                if (!confirm('Delete this managed entry? This cannot be undone.')) return;
+                const fd = new FormData();
+                fd.set('id', del.dataset.id);
+                fetch('{{ url_for("finance_delete") }}', { method: 'POST', body: fd })
+                    .then(async res => {
+                        let data;
+                        try { data = await res.json(); }
+                        catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+                        if (data.success) {
+                            showToast(data.message, 'success');
+                            setTimeout(() => window.location.reload(), 900);
+                        } else {
+                            showToast(data.message || 'Could not delete the entry.', 'error');
+                        }
+                    })
+                    .catch(() => showToast('Network error. Please try again.', 'error'));
+            }
+        });
+
+        const entrySearch = document.getElementById('entrySearch');
+        if (entrySearch) {
+            const rows = Array.from(document.querySelectorAll('#entriesPanel tbody tr'));
+            const emptyRow = rows.find(r => r.querySelector('.empty-state'));
+            const dataRows = rows.filter(r => r !== emptyRow)
+                .map(row => ({ row, hay: row.textContent.toLowerCase() }));
+            let scheduled = false;
+            entrySearch.addEventListener('input', function () {
+                if (scheduled) return;
+                scheduled = true;
+                requestAnimationFrame(() => {
+                    scheduled = false;
+                    const q = entrySearch.value.trim().toLowerCase();
+                    let visible = 0;
+                    dataRows.forEach(({ row, hay }) => {
+                        const match = !q || hay.includes(q);
+                        row.style.display = match ? '' : 'none';
+                        if (match) visible++;
+                    });
+                    if (emptyRow) {
+                        const p = emptyRow.querySelector('p');
+                        if (!q) {
+                            emptyRow.classList.toggle('d-none', dataRows.length > 0);
+                        } else if (visible === 0) {
+                            p.textContent = 'No entries match your search.';
+                            emptyRow.classList.remove('d-none');
+                        } else {
+                            emptyRow.classList.add('d-none');
+                        }
+                    }
+                });
+            });
+        }
+
+        // ----- Tabs -----
+        const tabEntries = document.getElementById('tabEntries');
+        const tabMasters = document.getElementById('tabMasters');
+        if (tabEntries && tabMasters) {
+            const entriesPanel = document.getElementById('entriesPanel');
+            const mastersPanel = document.getElementById('mastersPanel');
+            const activateFinTab = which => {
+                const masters = which === 'masters';
+                tabEntries.classList.toggle('active', !masters);
+                tabMasters.classList.toggle('active', masters);
+                entriesPanel.classList.toggle('d-none', masters);
+                mastersPanel.classList.toggle('d-none', !masters);
+            };
+            tabEntries.addEventListener('click', () => activateFinTab('entries'));
+            tabMasters.addEventListener('click', () => activateFinTab('masters'));
+        }
+
+        // ----- Masters CRUD -----
+        const MASTER_LABELS = { type: 'Managed Amount Type', bank: 'Bank' };
+        const MASTER_URLS = {
+            type: {
+                create: "{{ url_for('finance_master_create', kind='type') }}",
+                update: "{{ url_for('finance_master_update', kind='type') }}",
+                del: "{{ url_for('finance_master_delete', kind='type') }}"
+            },
+            bank: {
+                create: "{{ url_for('finance_master_create', kind='bank') }}",
+                update: "{{ url_for('finance_master_update', kind='bank') }}",
+                del: "{{ url_for('finance_master_delete', kind='bank') }}"
+            }
+        };
+
+        if (CAN_EDIT) {
+            const masterModal = makeModal('masterModal');
+            let editingMaster = null;
+
+            function setMasterError(msg) {
+                const box = document.getElementById('err_master_name');
+                if (box) box.textContent = msg || '';
+            }
+            function resetMasterGen() {
+                const gen = document.getElementById('masterGeneralError');
+                gen.classList.add('d-none');
+                gen.textContent = '';
+            }
+
+            function openMasterAdd(kind) {
+                editingMaster = { kind, id: null };
+                document.getElementById('masterModalTitle').textContent = 'Add ' + MASTER_LABELS[kind];
+                document.getElementById('masterNameLabel').textContent = MASTER_LABELS[kind] + ' Name';
+                document.getElementById('masterName').value = '';
+                setMasterError('');
+                resetMasterGen();
+                if (masterModal) masterModal.show();
+            }
+
+            function openMasterEdit(btn) {
+                editingMaster = { kind: btn.dataset.kind, id: btn.dataset.id };
+                const label = MASTER_LABELS[btn.dataset.kind];
+                document.getElementById('masterModalTitle').textContent = 'Edit ' + label;
+                document.getElementById('masterNameLabel').textContent = label + ' Name';
+                document.getElementById('masterName').value = btn.dataset.name || '';
+                setMasterError('');
+                resetMasterGen();
+                if (masterModal) masterModal.show();
+            }
+
+            document.querySelectorAll('.js-master-add').forEach(b =>
+                b.addEventListener('click', () => openMasterAdd(b.dataset.kind)));
+
+            document.getElementById('masterForm')?.addEventListener('submit', function (e) {
+                e.preventDefault();
+                if (!editingMaster) return;
+                const name = document.getElementById('masterName').value.trim();
+                if (name.length < 2) { setMasterError('Enter at least 2 characters.'); return; }
+                setMasterError('');
+
+                const fd = new FormData();
+                fd.set('name', name);
+                let url = MASTER_URLS[editingMaster.kind].create;
+                if (editingMaster.id) {
+                    fd.set('id', editingMaster.id);
+                    url = MASTER_URLS[editingMaster.kind].update;
+                }
+                submitJson(fd, url, masterModal, 'saveMasterBtn', 'masterSpinner',
+                    (k, v) => { if (k === 'name') setMasterError(v); },
+                    'masterGeneralError', 'Could not save.');
+            });
+
+            document.addEventListener('click', e => {
+                const medit = e.target.closest('.js-master-edit');
+                if (medit) { openMasterEdit(medit); return; }
+                const mdel = e.target.closest('.js-master-del');
+                if (!mdel) return;
+                const label = (MASTER_LABELS[mdel.dataset.kind] || 'item').toLowerCase();
+                if (!confirm('Delete this ' + label + '?')) return;
+                const fd = new FormData();
+                fd.set('id', mdel.dataset.id);
+                fetch(MASTER_URLS[mdel.dataset.kind].del, { method: 'POST', body: fd })
+                    .then(async res => {
+                        let data;
+                        try { data = await res.json(); }
+                        catch (_) { data = { success: false, message: 'Unexpected server response.' }; }
+                        if (data.success) {
+                            showToast(data.message, 'success');
+                            setTimeout(() => window.location.reload(), 900);
+                        } else {
+                            showToast(data.message || 'Could not delete.', 'error');
+                        }
+                    })
+                    .catch(() => showToast('Network error. Please try again.', 'error'));
+            });
+        }
+    </script>
+</body>
+</html>
