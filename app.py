@@ -6,6 +6,8 @@ import os
 import io
 import uuid
 import zipfile
+import hashlib
+import secrets
 from datetime import datetime, date, timezone, timedelta
 
 from reportlab.lib.pagesizes import A4
@@ -19,7 +21,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 app = Flask(__name__)
-app.secret_key = 'pdm_secret_key_2026'
+app.secret_key = os.environ.get('SECRET_KEY', 'pdm_secret_key_2026')
 
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -28,12 +30,12 @@ _ALLOWED_PDF_EXT = {'pdf'}
 _ALLOWED_IMG_EXT = {'png', 'jpg', 'jpeg', 'webp'}
 
 DB_CONFIG = {
-    'host': '127.0.0.1',
-    'port': 5432,
-    'database': 'pdm',
-    'user': 'postgres',
-    'password': 'Ajeet',
-    'connect_timeout': 3
+    'host': os.environ.get('DB_HOST', '127.0.0.1'),
+    'port': int(os.environ.get('DB_PORT', '5432')),
+    'database': os.environ.get('DB_NAME', 'pdm'),
+    'user': os.environ.get('DB_USER', 'postgres'),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'connect_timeout': int(os.environ.get('DB_CONNECT_TIMEOUT', '3'))
 }
 
 _email_re = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
@@ -419,7 +421,7 @@ def login():
         try:
             conn = get_db()
             cursor = conn.cursor()
-            cursor.execute('SELECT id, firstname, lastname, email, password FROM users WHERE email = %s LIMIT 1', (email,))
+            cursor.execute('SELECT id, firstname, lastname, email, password, isactive FROM users WHERE email = %s LIMIT 1', (email,))
             user = cursor.fetchone()
             cursor.close()
         except Exception:
@@ -428,6 +430,10 @@ def login():
         finally:
             if conn:
                 conn.close()
+
+        if user and not user['isactive']:
+            errors['general'] = 'Your account has been deactivated. Please contact the administrator.'
+            return render_template('login.html', errors=errors, email=email)
 
         if user and user['password'] == password:
             session['user_id'] = user['id']
@@ -523,6 +529,178 @@ def register():
 
     return render_template('register.html', errors={}, firstname='',
                            lastname='', email='', phone='', gender='')
+
+
+_PW_RESET_EXPIRY_MINUTES = 30
+
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _ensure_reset_tokens():
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id SERIAL PRIMARY KEY,
+                token_hash VARCHAR(64) NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+        cursor.close()
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
+
+
+_ensure_reset_tokens()
+
+
+def _lookup_reset_token(token):
+    """Return the user id for a valid, unexpired reset token, else None."""
+    if not token or len(token) > 128:
+        return None
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_id FROM password_reset_tokens
+            WHERE token_hash = %s AND used = FALSE AND expires_at > NOW()
+            LIMIT 1
+        """, (_hash_token(token),))
+        row = cursor.fetchone()
+        cursor.close()
+        return row['user_id'] if row else None
+    except Exception:
+        app.logger.exception('reset token lookup failed')
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+
+    errors = {}
+    email = ''
+    reset_link = None
+    submitted = False
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        submitted = True
+
+        if not email:
+            errors['email'] = 'Email is required.'
+        elif not _email_re.match(email):
+            errors['email'] = 'Please enter a valid email address.'
+
+        if not errors:
+            conn = None
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute('SELECT id FROM users WHERE email = %s LIMIT 1', (email,))
+                row = cursor.fetchone()
+                if row:
+                    cursor.execute("""
+                        DELETE FROM password_reset_tokens
+                        WHERE user_id = %s AND (used = TRUE OR expires_at <= NOW())
+                    """, (row['id'],))
+                    token = secrets.token_urlsafe(32)
+                    expires_at = datetime.now(timezone.utc) + timedelta(minutes=_PW_RESET_EXPIRY_MINUTES)
+                    cursor.execute("""
+                        INSERT INTO password_reset_tokens (token_hash, user_id, expires_at)
+                        VALUES (%s, %s, %s)
+                    """, (_hash_token(token), row['id'], expires_at))
+                    conn.commit()
+                    reset_link = url_for('reset_password', token=token)
+                cursor.close()
+            except Exception:
+                errors['general'] = 'Database error. Please try again.'
+            finally:
+                if conn:
+                    conn.close()
+
+    return render_template('forgot.html', errors=errors, email=email,
+                           reset_link=reset_link, submitted=submitted,
+                           expiry_minutes=_PW_RESET_EXPIRY_MINUTES)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+
+    user_id = _lookup_reset_token(token)
+    if user_id is None:
+        return render_template('reset.html',
+                               errors={'general': 'This reset link is invalid or has expired. Please request a new one.'},
+                               token=token)
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        errors = {}
+
+        if not password:
+            errors['password'] = 'Password is required.'
+        elif len(password) < 6:
+            errors['password'] = 'Password must be at least 6 characters.'
+        elif not any(c.isupper() for c in password):
+            errors['password'] = 'Password must contain at least one uppercase letter.'
+        elif not any(c.isdigit() for c in password):
+            errors['password'] = 'Password must contain at least one number.'
+
+        if not confirm_password:
+            errors['confirm_password'] = 'Please confirm your password.'
+        elif password != confirm_password:
+            errors['confirm_password'] = 'Passwords do not match.'
+
+        if not errors:
+            conn = None
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET password = %s WHERE id = %s', (password, user_id))
+                cursor.execute('UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = %s',
+                               (_hash_token(token),))
+                conn.commit()
+                cursor.close()
+                flash('Your password has been reset successfully. Please sign in.', 'success')
+                return redirect(url_for('login'))
+            except Exception:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                errors['general'] = 'Database error. Please try again.'
+            finally:
+                if conn:
+                    conn.close()
+
+        return render_template('reset.html', errors=errors, token=token)
+
+    return render_template('reset.html', errors={}, token=token)
 
 
 def _load_user_types():
@@ -999,6 +1177,11 @@ def _require_admin_level():
 def _require_rental_edit():
     """Rental tenants & payments add/update (never delete): Master Admin, Admin, Users."""
     return _require_roles('Master Admin', 'Admin', 'Users')
+
+
+def _require_rental_delete():
+    """Rental payment delete: Master Admin, Room Renter only."""
+    return _require_roles('Master Admin', 'Room Renter')
 
 
 def _user_owns_rental(cursor, rental_id):
@@ -1673,7 +1856,7 @@ def update_rent_payment():
 
 @app.route('/rental/payment/delete', methods=['POST'])
 def delete_rent_payment():
-    denied = _require_rental_edit()
+    denied = _require_rental_delete()
     if denied:
         return denied
 

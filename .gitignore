@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables (contains real credentials)
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# PDM config
+.pdm.toml
+.pdm-build/
+
+# Static uploads (runtime user documents - regenerated at runtime)
+static/uploads/*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local SQLite leftovers (app uses PostgreSQL)
+*.db
+*.sqlite
+*.sqlite3

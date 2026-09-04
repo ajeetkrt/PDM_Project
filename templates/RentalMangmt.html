@@ -715,6 +715,7 @@
         }
 
         const CAN_EDIT = {{ 'true' if me_type in [1, 2, 5] else 'false' }};
+        const CAN_DELETE = {{ 'true' if me_type in [1, 5] else 'false' }};
         let historyTenantName = '';
         let historyTenantId = '';
         const HISTORY_BASE = '{{ url_for("rental_payments", rental_id=0) }}';
@@ -1116,7 +1117,8 @@
                             eb.dataset.note = p.update_note || '';
                             eb.appendChild(hEl('i', 'bi bi-pencil-square'));
                             item.appendChild(eb);
-
+                        }
+                        if (CAN_DELETE) {
                             const db = hEl('button', 'pay-edit pay-del js-delete-payment');
                             db.type = 'button';
                             db.title = 'Delete this payment';
@@ -1321,6 +1323,8 @@
                 if (er) { openEditRental(er); return; }
                 const ep = e.target.closest('.js-edit-payment');
                 if (ep) { openEditPayment(ep); return; }
+            }
+            if (CAN_DELETE) {
                 const dp = e.target.closest('.js-delete-payment');
                 if (dp) deletePayment(dp);
             }

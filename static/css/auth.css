@@ -300,6 +300,14 @@ html, body { height: 100%; margin: 0; padding: 0; }
     box-shadow: 0 0 0 4px rgba(99, 102, 241, .18);
     outline: none;
 }
+.auth-card .form-floating > #email:focus,
+.auth-card .form-floating > #password:focus {
+    background: rgba(255, 255, 255, .06) !important;
+    border: 1px solid rgba(255, 255, 255, .12) !important;
+    border-color: rgba(255, 255, 255, .12) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
 .auth-card .form-floating > .form-control::placeholder { color: transparent; }
 
 .auth-card .form-floating > .form-select {

@@ -243,7 +243,7 @@
                                             </td>
                                             <td>
                                                 <div class="d-inline-flex justify-content-center gap-2 actions-cell">
-                                                    {% if me_type in [1, 5] %}
+                                                    {% if me_type in [1, 2, 5] %}
                                                     <button type="button" class="btn-action edit js-edit-driver"
                                                             data-id="{{ d['id'] }}"
                                                             data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
@@ -264,7 +264,7 @@
                                                         <i class="bi bi-download"></i>
                                                     </a>
                                                     {% endif %}
-                                                    {% if me_type in [1, 5] or me_type == 3 %}
+                                                    {% if me_type in [1, 2, 5] or me_type == 3 %}
                                                     <button type="button" class="btn-action edit js-add-ride"
                                                             data-id="{{ d['id'] }}"
                                                             data-name="{{ d['firstname'] }} {{ d['lastname'] }}"
@@ -521,7 +521,7 @@
         </main>
     </div>
 
-    {% if me_type in [1, 5] %}
+    {% if me_type in [1, 2, 5] %}
     <!-- Add Driver Modal -->
     <div class="modal fade" id="addDriverModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -715,7 +715,7 @@
     </div>
     {% endif %}
 
-    {% if me_type in [1, 5] or me_type == 3 %}
+    {% if me_type in [1, 2, 5] or me_type == 3 %}
     <!-- Add Ride Modal -->
     <div class="modal fade" id="addRideModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1002,7 +1002,8 @@
     <div class="toast-container position-fixed top-0 end-0 p-3" id="toastArea" style="z-index: 2100;"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const CAN_EDIT = {{ 'true' if me_type in [1, 5] else 'false' }};
+        const CAN_EDIT = {{ 'true' if me_type in [1, 2, 5] else 'false' }};
+        const CAN_DELETE = {{ 'true' if me_type in [1, 5] else 'false' }};
 
         function showToast(message, type) {
             const area = document.getElementById('toastArea');
@@ -1143,7 +1144,7 @@
             }
         });
 
-        {% if me_type in [1, 5] or me_type == 3 %}
+        {% if me_type in [1, 2, 5] or me_type == 3 %}
         const addDriverModal = makeModal('addDriverModal');
         const editDriverModal = makeModal('editDriverModal');
         const addRideModal = makeModal('addRideModal');
@@ -1406,21 +1407,21 @@
                             <span><i class="bi bi-truck me-1"></i>${d.vehicle_no || '—'}</span>
                             <span class="ms-auto"><b>${data.rides.length}</b> rides • <b>${totKm.toFixed(1)}</b> km • <b class="text-success">₹${totAmt.toFixed(2)}</b></span>
                         </div>`;
-                    const actHead = CAN_EDIT ? '<th>Actions</th>' : '';
+                    const actHead = (CAN_EDIT || CAN_DELETE) ? '<th>Actions</th>' : '';
                     list.innerHTML = data.rides.length ? `
                         <div class="table-responsive"><table class="table users-table align-middle mb-0">
                         <thead><tr><th>#</th><th>Date</th><th>Meter</th><th>KM</th><th>Amount</th><th>Meter Image</th><th>Remarks</th>${actHead}</tr></thead>
                         <tbody>${data.rides.map((r, i) => {
-                            const actCell = CAN_EDIT ? `
+                            const actCell = (CAN_EDIT || CAN_DELETE) ? `
                                 <td>
                                     <div class="d-inline-flex gap-2 actions-cell">
-                                        <button type="button" class="btn-action edit js-edit-ride"
+                                        ${CAN_EDIT ? `<button type="button" class="btn-action edit js-edit-ride"
                                                 data-id="${r.id}" data-date="${r.ride_date}"
                                                 data-km="${r.km_driven ?? ''}" data-mstart="${r.meter_start ?? ''}"
                                                 data-mend="${r.meter_end ?? ''}" data-amount="${r.amount ?? ''}"
                                                 data-has-meter="${r.meter_image ? '1' : '0'}"
-                                                data-remarks="${escAttr(r.remarks || '')}" title="Edit ride"><i class="bi bi-pencil-square"></i></button>
-                                        <button type="button" class="btn-action del js-del-ride" data-id="${r.id}" title="Delete ride"><i class="bi bi-trash3"></i></button>
+                                                data-remarks="${escAttr(r.remarks || '')}" title="Edit ride"><i class="bi bi-pencil-square"></i></button>` : ''}
+                                        ${CAN_DELETE ? `<button type="button" class="btn-action del js-del-ride" data-id="${r.id}" title="Delete ride"><i class="bi bi-trash3"></i></button>` : ''}
                                     </div>
                                 </td>` : '';
                             return `

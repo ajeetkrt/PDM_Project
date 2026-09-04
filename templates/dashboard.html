@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+
+
+
 <html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
@@ -121,19 +124,49 @@
                 {% endfor %}
             {% endwith %}
 
-            <div class="dash-profile">
-                <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
-                <div>
-                    <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
-                    <div class="dp-email">{{ session['email'] }}</div>
+            <div class="dash-header">
+                <div class="dash-profile">
+                    <span class="dash-avatar"><i class="bi bi-person-fill"></i></span>
+                    <div>
+                        <div class="dp-name">{{ session['firstname'] }} {{ session['lastname'] }}</div>
+                        <div class="dp-email">{{ session['email'] }}</div>
+                    </div>
+                    <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
+                        <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name if me_type_name else ('Admin' if me_type == 1 else 'User') }}
+                    </span>
                 </div>
-                <span class="badge-soft {{ 'indigo' if me_type == 1 else 'cyan' }} ms-auto">
-                    <i class="bi {{ 'bi-shield-lock' if me_type == 1 else 'bi-person' }}"></i>{{ me_type_name if me_type_name else ('Admin' if me_type == 1 else 'User') }}
-                </span>
+
+                <div class="dash-stats">
+                    <a class="dash-stat" href="{{ url_for('dashboard') }}">
+                        <span class="ds-icon indigo"><i class="bi bi-people"></i></span>
+                        <span class="ds-meta">
+                            <span class="ds-value">{{ stats.total }}</span>
+                            <span class="ds-label">Total Users</span>
+                        </span>
+                    </a>
+                    <div class="dash-stat">
+                        <span class="ds-icon green"><i class="bi bi-check-circle"></i></span>
+                        <span class="ds-meta">
+                            <span class="ds-value">{{ stats.active }}</span>
+                            <span class="ds-label">Active</span>
+                        </span>
+                    </div>
+                    <div class="dash-stat">
+                        <span class="ds-icon red"><i class="bi bi-x-circle"></i></span>
+                        <span class="ds-meta">
+                            <span class="ds-value">{{ stats.inactive }}</span>
+                            <span class="ds-label">Inactive</span>
+                        </span>
+                    </div>
+                </div>
             </div>
 
             <div class="users-card">
                 <div class="users-head">
+                    <div class="users-head-left">
+                        <h5><i class="bi bi-people me-2"></i>User Management</h5>
+                        <div class="users-subtitle">Manage all registered users and their access</div>
+                    </div>
                     <div class="users-head-right">
                         <input type="text" id="userSearch" class="table-search" placeholder="Search users..." autocomplete="off">
                         {% if me_type == 1 %}
@@ -160,7 +193,9 @@
                                 <th>Type</th>
                                 <th>Joined</th>
                                 <th>Status</th>
+                                {% if me_type in [1, 5] %}
                                 <th>Actions</th>
+                                 {% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -450,9 +485,13 @@
 
         const fields = ['firstname', 'lastname', 'email', 'phone', 'gender', 'istype', 'password', 'confirm_password'];
 
+        function editFieldInput(name) {
+            return document.getElementById('edit' + name.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(''));
+        }
+
         function setFieldError(name, msg) {
             document.getElementById('err_' + name).textContent = msg || '';
-            const input = document.getElementById('edit' + name.charAt(0).toUpperCase() + name.slice(1));
+            const input = editFieldInput(name);
             if (input) input.classList.toggle('invalid-input', !!msg);
         }
 
@@ -533,9 +572,11 @@
         });
 
         fields.forEach(f => {
-            const input = document.getElementById('edit' + f.charAt(0).toUpperCase() + f.slice(1));
-            input.addEventListener('input', () => setFieldError(f, ''));
-            input.addEventListener('change', () => setFieldError(f, ''));
+            const input = editFieldInput(f);
+            if (input) {
+                input.addEventListener('input', () => setFieldError(f, ''));
+                input.addEventListener('change', () => setFieldError(f, ''));
+            }
         });
 
         editForm.addEventListener('submit', function (e) {
