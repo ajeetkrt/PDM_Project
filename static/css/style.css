@@ -1398,6 +1398,12 @@ a.dash-stat:hover {
     color: #cbd5e1;
 }
 
+.badge-soft.amber {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fcd34d;
+}
+
 .btn-action {
     display: inline-flex;
     align-items: center;

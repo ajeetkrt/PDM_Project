@@ -269,6 +269,52 @@ def _ensure_payment_audit():
 _ensure_rent_months()
 _ensure_payment_audit()
 
+
+def _ensure_amount_approvals():
+    """Approval workflow columns: amounts submitted by Room Renters / Drivers
+    stay 'pending' until a Master Admin or Admin approves (or rejects) them.
+    Entries recorded by staff are 'approved' immediately."""
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        for table in ('rentdetails', 'ridedetails'):
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS status VARCHAR(12) NOT NULL DEFAULT 'approved'
+            """)
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+            """)
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP
+            """)
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                DROP CONSTRAINT IF EXISTS {table}_status_check
+            """)
+            cursor.execute(f"""
+                ALTER TABLE {table}
+                ADD CONSTRAINT {table}_status_check
+                CHECK (status IN ('pending', 'approved', 'rejected'))
+            """)
+        conn.commit()
+        cursor.close()
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
+
+
+_ensure_amount_approvals()
+
 _FIN_TYPES_SEED = ('Fixed Deposit', 'Others')
 _FIN_BANKS = ['State Bank of India', 'HDFC Bank', 'ICICI Bank', 'Punjab National Bank',
               'Axis Bank', 'Kotak Mahindra Bank', 'Bank of Baroda', 'Canara Bank',
@@ -1230,7 +1276,7 @@ def _load_rental_overview(filter_year=None):
             LEFT JOIN usertype ut ON ut.id = r.usertypeid
             LEFT JOIN (
                 SELECT rentalid, SUM(rentamount) AS total_paid, COUNT(*) AS months_paid
-                FROM rentdetails GROUP BY rentalid
+                FROM rentdetails WHERE status = 'approved' GROUP BY rentalid
             ) pay ON pay.rentalid = r.id
             WHERE TRUE {owner_sql}
             ORDER BY r.created_at DESC
@@ -1239,10 +1285,13 @@ def _load_rental_overview(filter_year=None):
 
         cursor.execute(f"""
             SELECT rd.id, rd.year, rd.month, rd.rentamount::float AS rentamount, rd.currentdate, rd.rentalid,
+                   rd.status, rd.reviewed_at,
+                   COALESCE(ap.firstname || ' ' || ap.lastname, '') AS reviewed_by_name,
                    u.firstname, u.lastname, r.aadharno, r.floortype
             FROM rentdetails rd
             JOIN rentaldetails r ON r.id = rd.rentalid
             JOIN users u ON u.id = r.userid
+            LEFT JOIN users ap ON ap.id = rd.reviewed_by
             WHERE TRUE {owner_sql} {'AND rd.year = %s' if year_params else ''}
             ORDER BY rd.currentdate DESC, rd.id DESC
         """, owner_params + year_params)
@@ -1255,14 +1304,16 @@ def _load_rental_overview(filter_year=None):
               (SELECT COALESCE(SUM(total_member), 0) FROM rentaldetails r WHERE TRUE {owner_sql}) AS members,
               (SELECT COALESCE(SUM(rd.rentamount), 0)::float FROM rentdetails rd
                   JOIN rentaldetails r ON r.id = rd.rentalid
-                  WHERE EXTRACT(YEAR FROM rd.currentdate) = %s {owner_sql}) AS collected_year,
+                  WHERE rd.status = 'approved'
+                    AND EXTRACT(YEAR FROM rd.currentdate) = %s {owner_sql}) AS collected_year,
               (SELECT COALESCE(SUM(rd.rentamount), 0)::float FROM rentdetails rd
                   JOIN rentaldetails r ON r.id = rd.rentalid
-                  WHERE EXTRACT(YEAR FROM rd.currentdate) = %s
+                  WHERE rd.status = 'approved'
+                    AND EXTRACT(YEAR FROM rd.currentdate) = %s
                     AND EXTRACT(MONTH FROM rd.currentdate) = %s {owner_sql}) AS collected_month,
               (SELECT COALESCE(SUM(rd.rentamount), 0)::float FROM rentdetails rd
                   JOIN rentaldetails r ON r.id = rd.rentalid
-                  WHERE TRUE {owner_sql}) AS collected_all
+                  WHERE rd.status = 'approved' {owner_sql}) AS collected_all
         """, owner_params + owner_params + (now_y,) + owner_params + (now_y, now_m) + owner_params + owner_params)
         stats = cursor.fetchone()
 
@@ -1447,10 +1498,12 @@ def add_rent_payment():
         if not owns:
             return jsonify(success=False,
                            message='You can only add rent for your own tenancy.'), 403
+        submitted_by_renter = True
     else:
         guard = _require_rental_edit()
         if guard:
             return guard
+        submitted_by_renter = False
 
     year = request.form.get('year', '').strip()
     month = request.form.get('month', '').strip()
@@ -1492,22 +1545,35 @@ def add_rent_payment():
                            errors={'rentalid': 'Tenant record not found.'}), 400
 
         cursor.execute("""
-            SELECT id FROM rentdetails
+            SELECT id, status FROM rentdetails
             WHERE rentalid = %s AND year = %s AND month = %s LIMIT 1
         """, (int(rentalid), yr, m))
-        if cursor.fetchone():
-            cursor.close()
-            return jsonify(success=False,
-                           message=f'Rent for {_MONTH_NAMES[m - 1]} {yr} is already recorded.',
-                           errors={'month': f'{_MONTH_NAMES[m - 1]} {yr} already has a payment.'}), 400
+        existing = cursor.fetchone()
+        if existing:
+            if existing['status'] == 'rejected':
+                cursor.execute('DELETE FROM rentdetails WHERE id = %s', (existing['id'],))
+            else:
+                cursor.close()
+                return jsonify(success=False,
+                               message=f'Rent for {_MONTH_NAMES[m - 1]} {yr} is already recorded.',
+                               errors={'month': f'{_MONTH_NAMES[m - 1]} {yr} already has a payment.'}), 400
 
+        status = 'pending' if submitted_by_renter else 'approved'
         cursor.execute(
-            'INSERT INTO rentdetails (year, month, rentamount, rentalid) VALUES (%s, %s, %s, %s)',
-            (yr, m, amt, int(rentalid)))
+            'INSERT INTO rentdetails (year, month, rentamount, rentalid, status, reviewed_by, reviewed_at) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s)',
+            (yr, m, amt, int(rentalid), status,
+             session['user_id'] if status == 'approved' else None,
+             datetime.now(timezone.utc) if status == 'approved' else None))
         conn.commit()
         cursor.close()
-        return jsonify(success=True,
-                       message=f'Rent of â‚¹{amt:,.2f} for {_MONTH_NAMES[m - 1]} {yr} recorded successfully.')
+        if status == 'approved':
+            message = (f'Rent of \u20b9{amt:,.2f} for {_MONTH_NAMES[m - 1]} {yr} '
+                       f'recorded successfully.')
+        else:
+            message = (f'Rent of \u20b9{amt:,.2f} for {_MONTH_NAMES[m - 1]} {yr} '
+                       f'submitted for approval. You will see it in the ledger once approved.')
+        return jsonify(success=True, message=message)
     except Exception:
         if conn:
             try:
@@ -1548,10 +1614,13 @@ def rental_payments(rental_id):
             tenant['joined_label'] = tenant['rental_joiningdate'].strftime('%d %b %Y')
 
         cursor.execute("""
-            SELECT id, year, month, rentamount::float AS rentamount, currentdate,
-                   last_updated_at, last_update_note
-            FROM rentdetails WHERE rentalid = %s
-            ORDER BY year DESC, month DESC, currentdate DESC
+            SELECT rd.id, rd.year, rd.month, rd.rentamount::float AS rentamount, rd.currentdate,
+                   rd.last_updated_at, rd.last_update_note, rd.status, rd.reviewed_at,
+                   COALESCE(ap.firstname || ' ' || ap.lastname, '') AS reviewed_by_name
+            FROM rentdetails rd
+            LEFT JOIN users ap ON ap.id = rd.reviewed_by
+            WHERE rd.rentalid = %s
+            ORDER BY rd.year DESC, rd.month DESC, rd.currentdate DESC
         """, (rental_id,))
         payments = cursor.fetchall()
         for p in payments:
@@ -1564,6 +1633,76 @@ def rental_payments(rental_id):
     except Exception:
         app.logger.exception('rental_payments failed')
         return jsonify(success=False, message='Could not load payment history.'), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/rental/payment/<int:payment_id>/approve', methods=['POST'])
+def approve_rent_payment(payment_id):
+    denied = _require_admin_level()
+    if denied:
+        return denied
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE rentdetails
+            SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = 'pending'
+        """, (session['user_id'], int(payment_id)))
+        if cursor.rowcount == 0:
+            cursor.close()
+            return jsonify(success=False,
+                           message='No pending rent payment found to approve.'), 400
+        conn.commit()
+        cursor.close()
+        return jsonify(success=True, message='Rent payment approved.')
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        app.logger.exception('approve_rent_payment failed')
+        return jsonify(success=False,
+                       message='Could not approve the payment. Please try again.'), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/rental/payment/<int:payment_id>/reject', methods=['POST'])
+def reject_rent_payment(payment_id):
+    denied = _require_admin_level()
+    if denied:
+        return denied
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE rentdetails
+            SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = 'pending'
+        """, (session['user_id'], int(payment_id)))
+        if cursor.rowcount == 0:
+            cursor.close()
+            return jsonify(success=False,
+                           message='No pending rent payment found to reject.'), 400
+        conn.commit()
+        cursor.close()
+        return jsonify(success=True, message='Rent payment rejected.')
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        app.logger.exception('reject_rent_payment failed')
+        return jsonify(success=False,
+                       message='Could not reject the payment. Please try again.'), 500
     finally:
         if conn:
             conn.close()
@@ -1598,7 +1737,7 @@ def rental_download_pdf(rental_id):
         cursor.execute("""
             SELECT id, year, month, rentamount::float AS rentamount, currentdate,
                    last_updated_at, last_update_note
-            FROM rentdetails WHERE rentalid = %s
+            FROM rentdetails WHERE rentalid = %s AND status = 'approved'
             ORDER BY year ASC, month ASC, currentdate ASC
         """, (rental_id,))
         payments = cursor.fetchall()
@@ -1992,7 +2131,8 @@ def _load_finance_overview(filter_type='', filter_bank=''):
 
         cursor.execute("""
             SELECT
-              (SELECT COALESCE(SUM(rentamount), 0)::float FROM rentdetails) AS total_rental,
+              (SELECT COALESCE(SUM(rentamount), 0)::float FROM rentdetails
+                  WHERE status = 'approved') AS total_rental,
               (SELECT COALESCE(SUM(amount), 0)::float FROM finance_entries) AS managed
         """)
         totals = cursor.fetchone()
@@ -2058,7 +2198,8 @@ def _finance_master_sets(cursor):
 
 def _finance_unmanaged_left(cursor, exclude_id=None):
     """How much of the total rental amount is still unmanaged (>= 0)."""
-    cursor.execute('SELECT COALESCE(SUM(rentamount), 0)::float AS total FROM rentdetails')
+    cursor.execute('SELECT COALESCE(SUM(rentamount), 0)::float AS total '
+                   'FROM rentdetails WHERE status = \'approved\'')
     total = cursor.fetchone()['total'] or 0
     if exclude_id:
         cursor.execute('SELECT COALESCE(SUM(amount), 0)::float AS managed FROM finance_entries WHERE id <> %s',
@@ -2988,7 +3129,7 @@ def _load_rides_overview(filter_year=None):
             LEFT JOIN (
                 SELECT driverid, SUM(amount) AS total_amount, SUM(km_driven) AS total_km,
                        COUNT(*) AS rides
-                FROM ridedetails GROUP BY driverid
+                FROM ridedetails WHERE status = 'approved' GROUP BY driverid
             ) agg ON agg.driverid = d.id
             LEFT JOIN LATERAL (
                 SELECT rd.meter_end::float AS last_meter_end
@@ -3006,10 +3147,13 @@ def _load_rides_overview(filter_year=None):
             SELECT rd.id, rd.driverid, rd.ride_date, rd.km_driven::float AS km_driven,
                    rd.meter_start::float AS meter_start, rd.meter_end::float AS meter_end,
                    rd.meter_image, rd.amount::float AS amount, rd.remarks, rd.currentdate,
+                   rd.status, rd.reviewed_at,
+                   COALESCE(ap.firstname || ' ' || ap.lastname, '') AS reviewed_by_name,
                    u.firstname, u.lastname, d.vehicle_no
             FROM ridedetails rd
             JOIN drivers d ON d.id = rd.driverid
             JOIN users u ON u.id = d.userid
+            LEFT JOIN users ap ON ap.id = rd.reviewed_by
             WHERE TRUE {own_sql} {year_where}
             ORDER BY rd.ride_date DESC, rd.id DESC
         """, own_params + year_params)
@@ -3035,18 +3179,21 @@ def _load_rides_overview(filter_year=None):
               (SELECT COUNT(*) FROM drivers d WHERE TRUE {own_sql}) AS drivers,
               (SELECT COALESCE(SUM(rd.km_driven), 0)::float FROM ridedetails rd
                  JOIN drivers d ON d.id = rd.driverid
-                 WHERE EXTRACT(YEAR FROM rd.ride_date) = %s {own_sql}) AS km_year,
+                 WHERE rd.status = 'approved'
+                   AND EXTRACT(YEAR FROM rd.ride_date) = %s {own_sql}) AS km_year,
               (SELECT COALESCE(SUM(rd.km_driven), 0)::float FROM ridedetails rd
                  JOIN drivers d ON d.id = rd.driverid
-                 WHERE EXTRACT(YEAR FROM rd.ride_date) = %s
+                 WHERE rd.status = 'approved'
+                   AND EXTRACT(YEAR FROM rd.ride_date) = %s
                    AND EXTRACT(MONTH FROM rd.ride_date) = %s {own_sql}) AS km_month,
               (SELECT COALESCE(SUM(rd.amount), 0)::float FROM ridedetails rd
                  JOIN drivers d ON d.id = rd.driverid
-                 WHERE EXTRACT(YEAR FROM rd.ride_date) = %s
+                 WHERE rd.status = 'approved'
+                   AND EXTRACT(YEAR FROM rd.ride_date) = %s
                    AND EXTRACT(MONTH FROM rd.ride_date) = %s {own_sql}) AS paid_month,
                (SELECT COALESCE(SUM(rd.amount), 0)::float FROM ridedetails rd
                   JOIN drivers d ON d.id = rd.driverid
-                  WHERE TRUE {own_sql}) AS paid_all
+                  WHERE rd.status = 'approved' {own_sql}) AS paid_all
         """, own_params + (now_y,) + own_params + (now_y, now_m) + own_params + (now_y, now_m) + own_params + own_params)
         stats = cursor.fetchone()
 
@@ -3084,7 +3231,7 @@ def _load_rides_overview(filter_year=None):
             FROM ridedetails rd
             JOIN drivers d ON d.id = rd.driverid
             JOIN users u ON u.id = d.userid
-            WHERE TRUE {own_sql}
+            WHERE rd.status = 'approved' {own_sql}
             GROUP BY driver ORDER BY amount DESC
         """, own_params)
         fin_rows = cursor.fetchall()
@@ -3096,7 +3243,7 @@ def _load_rides_overview(filter_year=None):
                    COALESCE(SUM(rd.amount), 0)::float AS amount
             FROM ridedetails rd
             JOIN drivers d ON d.id = rd.driverid
-            WHERE TRUE {own_sql}
+            WHERE rd.status = 'approved' {own_sql}
             GROUP BY ym ORDER BY ym DESC
         """, own_params)
         monthly = cursor.fetchall()
@@ -3130,7 +3277,8 @@ def _load_rides_overview(filter_year=None):
 
         cursor.execute("""
             SELECT
-              (SELECT COALESCE(SUM(amount), 0)::float FROM ridedetails) AS total_rides,
+              (SELECT COALESCE(SUM(amount), 0)::float FROM ridedetails
+                  WHERE status = 'approved') AS total_rides,
               (SELECT COALESCE(SUM(amount), 0)::float FROM ride_finance_entries) AS managed
         """)
         rf_totals = cursor.fetchone()
@@ -3467,16 +3615,25 @@ def add_ride():
             return jsonify(success=False, message='Driver not found.',
                            errors={'driverid': 'Driver record not found.'}), 400
 
+        submitted_by_driver = (me_t == _rid('Driver'))
+        status = 'pending' if submitted_by_driver else 'approved'
         cursor.execute("""
             INSERT INTO ridedetails
-                (driverid, ride_date, km_driven, meter_start, meter_end, meter_image, amount, remarks)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NULLIF(%s, ''))
+                (driverid, ride_date, km_driven, meter_start, meter_end, meter_image,
+                 amount, remarks, status, reviewed_by, reviewed_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NULLIF(%s, ''), %s, %s, %s)
         """, (v['did'], v['ride_date'], v['km'], v['ms'], v['me'], meter_rel,
-              v['amount'], v['remarks']))
+              v['amount'], v['remarks'], status,
+              session['user_id'] if status == 'approved' else None,
+              datetime.now(timezone.utc) if status == 'approved' else None))
         conn.commit()
         cursor.close()
-        return jsonify(success=True,
-                       message=f'Ride recorded: {v["km"]:,.1f} km, â‚¹{v["amount"]:,.2f}.')
+        if status == 'approved':
+            message = f'Ride recorded: {v["km"]:,.1f} km, \u20b9{v["amount"]:,.2f}.'
+        else:
+            message = (f'Ride submitted for approval: {v["km"]:,.1f} km, '
+                       f'\u20b9{v["amount"]:,.2f}. It will count once approved.')
+        return jsonify(success=True, message=message)
     except Exception:
         if conn:
             try:
@@ -3593,6 +3750,76 @@ def delete_ride():
             conn.close()
 
 
+@app.route('/ride/<int:ride_id>/approve', methods=['POST'])
+def approve_ride(ride_id):
+    denied = _require_admin_level()
+    if denied:
+        return denied
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE ridedetails
+            SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = 'pending'
+        """, (session['user_id'], int(ride_id)))
+        if cursor.rowcount == 0:
+            cursor.close()
+            return jsonify(success=False,
+                           message='No pending ride found to approve.'), 400
+        conn.commit()
+        cursor.close()
+        return jsonify(success=True, message='Ride approved.')
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        app.logger.exception('approve_ride failed')
+        return jsonify(success=False,
+                       message='Could not approve the ride. Please try again.'), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/ride/<int:ride_id>/reject', methods=['POST'])
+def reject_ride(ride_id):
+    denied = _require_admin_level()
+    if denied:
+        return denied
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE ridedetails
+            SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = 'pending'
+        """, (session['user_id'], int(ride_id)))
+        if cursor.rowcount == 0:
+            cursor.close()
+            return jsonify(success=False,
+                           message='No pending ride found to reject.'), 400
+        conn.commit()
+        cursor.close()
+        return jsonify(success=True, message='Ride rejected.')
+    except Exception:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        app.logger.exception('reject_ride failed')
+        return jsonify(success=False,
+                       message='Could not reject the ride. Please try again.'), 500
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.route('/driver/rides/<int:driver_id>')
 def driver_rides_history(driver_id):
     if 'user_id' not in session:
@@ -3614,11 +3841,15 @@ def driver_rides_history(driver_id):
             return jsonify(success=False, message='Driver not found.'), 404
 
         cursor.execute("""
-            SELECT id, ride_date, km_driven::float AS km_driven,
-                   meter_start::float AS meter_start, meter_end::float AS meter_end,
-                   meter_image, amount::float AS amount, remarks, currentdate
-            FROM ridedetails WHERE driverid = %s
-            ORDER BY ride_date DESC, id DESC
+            SELECT rd.id, rd.ride_date, rd.km_driven::float AS km_driven,
+                   rd.meter_start::float AS meter_start, rd.meter_end::float AS meter_end,
+                   rd.meter_image, rd.amount::float AS amount, rd.remarks, rd.currentdate,
+                   rd.status, rd.reviewed_at,
+                   COALESCE(ap.firstname || ' ' || ap.lastname, '') AS reviewed_by_name
+            FROM ridedetails rd
+            LEFT JOIN users ap ON ap.id = rd.reviewed_by
+            WHERE rd.driverid = %s
+            ORDER BY rd.ride_date DESC, rd.id DESC
         """, (driver_id,))
         rides = cursor.fetchall()
 
@@ -3647,7 +3878,8 @@ def driver_rides_history(driver_id):
 
 def _rides_unmanaged_left(cursor, exclude_id=None):
     """Total ride payouts minus described amounts; can never go below zero."""
-    cursor.execute('SELECT COALESCE(SUM(amount), 0)::float AS total FROM ridedetails')
+    cursor.execute('SELECT COALESCE(SUM(amount), 0)::float AS total '
+                   'FROM ridedetails WHERE status = \'approved\'')
     total = cursor.fetchone()['total'] or 0
     if exclude_id:
         cursor.execute('SELECT COALESCE(SUM(amount), 0)::float AS managed '
@@ -3848,7 +4080,7 @@ def driver_download_pdf(driver_id):
         cursor.execute("""
             SELECT id, ride_date, km_driven::float AS km_driven, meter_start::float AS meter_start,
                    meter_end::float AS meter_end, meter_image, amount::float AS amount, remarks
-            FROM ridedetails WHERE driverid = %s
+            FROM ridedetails WHERE driverid = %s AND status = 'approved'
             ORDER BY ride_date ASC, id ASC
         """, (driver_id,))
         rides = cursor.fetchall()
@@ -4359,7 +4591,7 @@ def my_rent_pdf():
         cursor.execute("""
             SELECT rd.year, rd.month, rd.rentamount::float AS rentamount, rd.currentdate
             FROM rentdetails rd
-            WHERE rd.rentalid = %s
+            WHERE rd.rentalid = %s AND rd.status = 'approved'
             ORDER BY rd.year DESC, rd.month DESC, rd.id DESC
         """, (rec['id'],))
         pays = cursor.fetchall()
@@ -4427,7 +4659,7 @@ def my_rides_pdf():
             SELECT ride_date, km_driven::float AS km_driven,
                    meter_start::float AS meter_start, meter_end::float AS meter_end,
                    amount::float AS amount
-            FROM ridedetails WHERE driverid = %s
+            FROM ridedetails WHERE driverid = %s AND status = 'approved'
             ORDER BY ride_date DESC, id DESC
         """, (rec['id'],))
         rides = cursor.fetchall()

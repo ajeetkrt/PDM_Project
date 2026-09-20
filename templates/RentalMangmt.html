@@ -306,6 +306,7 @@
                                     <th>Period</th>
                                     <th>Amount</th>
                                     <th>Paid On</th>
+                                    <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -325,11 +326,23 @@
                                             <td><span class="badge-soft indigo"><i class="bi bi-calendar3"></i>{{ _mn[l['month'] - 1] }} {{ l['year'] }}</span></td>
                                             <td><span class="money green">₹ {{ '{:,.2f}'.format(l['rentamount']) }}</span></td>
                                             <td class="cell-muted">{{ l['currentdate'].strftime('%d %b %Y, %H:%M') }}</td>
+                                            <td>
+                                                <span class="badge-soft {{ 'amber' if l['status'] == 'pending' else ('red' if l['status'] == 'rejected' else 'green') }}">
+                                                    <i class="bi {{ 'bi-hourglass-split' if l['status'] == 'pending' else ('bi-x-circle' if l['status'] == 'rejected' else 'bi-check-circle') }}"></i>
+                                                    {{ 'Pending Approval' if l['status'] == 'pending' else ('Rejected' if l['status'] == 'rejected' else 'Approved') }}
+                                                </span>
+                                                {% if me_type in [1, 5] and l['status'] == 'pending' %}
+                                                    <div class="d-inline-flex gap-2 mt-1">
+                                                        <button type="button" class="btn-action success js-approve-rent" data-id="{{ l['id'] }}" title="Approve payment"><i class="bi bi-check-lg"></i>Approve</button>
+                                                        <button type="button" class="btn-action danger js-reject-rent" data-id="{{ l['id'] }}" title="Reject payment"><i class="bi bi-x-lg"></i>Reject</button>
+                                                    </div>
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="7">
+                                        <td colspan="8">
                                             <div class="empty-state">
                                                 <i class="bi bi-journal-x"></i>
                                                 <p class="mb-0">{% if filter_year %}No payments recorded for {{ filter_year }}.{% else %}No rent payments recorded yet.{% endif %}</p>
@@ -716,10 +729,13 @@
 
         const CAN_EDIT = {{ 'true' if me_type in [1, 2, 5] else 'false' }};
         const CAN_DELETE = {{ 'true' if me_type in [1, 5] else 'false' }};
+        const CAN_APPROVE = {{ 'true' if me_type in [1, 5] else 'false' }};
         let historyTenantName = '';
         let historyTenantId = '';
         const HISTORY_BASE = '{{ url_for("rental_payments", rental_id=0) }}';
         const DELETE_PAYMENT_URL = '{{ url_for("delete_rent_payment") }}';
+        const APPROVE_PAYMENT_URL = '{{ url_for("approve_rent_payment", payment_id=0) }}';
+        const REJECT_PAYMENT_URL = '{{ url_for("reject_rent_payment", payment_id=0) }}';
 
         function makeModal(id) {
             const el = document.getElementById(id);
@@ -1089,7 +1105,8 @@
                         list.appendChild(emp);
                     }
                     data.payments.forEach(p => {
-                        total += Number(p.rentamount);
+                        const st = p.status || 'approved';
+                        if (st === 'approved') total += Number(p.rentamount);
                         const item = hEl('div', 'pay-item');
                         item.appendChild(hEl('span', 'pay-year',
                             p.month ? (MONTH_SHORT[p.month - 1] + ' ' + p.year) : String(p.year)));
@@ -1102,9 +1119,16 @@
                                 mid.appendChild(hEl('small', 'pay-note', p.update_note));
                             }
                         }
+                        const stBadge = hEl('span', 'badge-soft ' + (st === 'pending' ? 'amber' : (st === 'rejected' ? 'red' : 'green')));
+                        stBadge.appendChild(hEl('i', 'bi ' + (st === 'pending' ? 'bi-hourglass-split' : (st === 'rejected' ? 'bi-x-circle' : 'bi-check-circle'))));
+                        stBadge.appendChild(document.createTextNode(st === 'pending' ? ' Pending Approval' : (st === 'rejected' ? ' Rejected' : ' Approved')));
+                        if (p.reviewed_by_name) {
+                            stBadge.appendChild(hEl('small', 'pay-date', ' by ' + p.reviewed_by_name));
+                        }
+                        item.appendChild(stBadge);
                         item.appendChild(mid);
                         item.appendChild(hEl('span', 'pay-amt money green', fmtMoney(p.rentamount)));
-                        if (CAN_EDIT) {
+                        if (CAN_EDIT && st !== 'rejected') {
                             const eb = hEl('button', 'pay-edit js-edit-payment');
                             eb.type = 'button';
                             eb.title = 'Correct this payment';
@@ -1125,6 +1149,20 @@
                             db.dataset.id = p.id;
                             db.appendChild(hEl('i', 'bi bi-trash3'));
                             item.appendChild(db);
+                        }
+                        if (CAN_APPROVE && st === 'pending') {
+                            const ab = hEl('button', 'pay-edit pay-approve js-approve-payment');
+                            ab.type = 'button';
+                            ab.title = 'Approve this payment';
+                            ab.dataset.id = p.id;
+                            ab.appendChild(hEl('i', 'bi bi-check-circle'));
+                            item.appendChild(ab);
+                            const rb = hEl('button', 'pay-edit pay-del js-reject-payment');
+                            rb.type = 'button';
+                            rb.title = 'Reject this payment';
+                            rb.dataset.id = p.id;
+                            rb.appendChild(hEl('i', 'bi bi-x-circle'));
+                            item.appendChild(rb);
                         }
                         list.appendChild(item);
                     });
@@ -1318,6 +1356,13 @@
             const histBtn = e.target.closest('.js-history');
             if (histBtn) { openHistory(histBtn); return; }
 
+            if (CAN_APPROVE) {
+                const ap = e.target.closest('.js-approve-rent, .js-approve-payment');
+                if (ap) { reviewPayment(ap.dataset.id, 'approve'); return; }
+                const rj = e.target.closest('.js-reject-rent, .js-reject-payment');
+                if (rj) { reviewPayment(rj.dataset.id, 'reject'); return; }
+            }
+
             if (CAN_EDIT) {
                 const er = e.target.closest('.js-edit-rental');
                 if (er) { openEditRental(er); return; }
@@ -1329,6 +1374,19 @@
                 if (dp) deletePayment(dp);
             }
         });
+
+        function reviewPayment(paymentId, action) {
+            const base = action === 'approve' ? APPROVE_PAYMENT_URL : REJECT_PAYMENT_URL;
+            fetch(base.replace('/0/' + action, '/' + paymentId + '/' + action), { method: 'POST' })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); } catch (err) { data = { success: false, message: 'Unexpected server response.' }; }
+                    showToast(data.message || (data.success ? 'Payment updated.' : 'Could not update payment.'),
+                              data.success ? 'success' : 'error');
+                    if (data.success) setTimeout(() => window.location.reload(), 900);
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'));
+        }
     </script>
 </body>
 </html>

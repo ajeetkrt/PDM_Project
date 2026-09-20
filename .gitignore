@@ -21,9 +21,6 @@ ENV/
 .pdm.toml
 .pdm-build/
 
-# Static uploads (runtime user documents - regenerated at runtime)
-static/uploads/*
-
 # OS files
 .DS_Store
 Thumbs.db

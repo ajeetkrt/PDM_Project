@@ -321,6 +321,7 @@
                                     <th>Amount</th>
                                     <th>Meter Image</th>
                                     <th>Remarks</th>
+                                    <th>Status</th>
                                     {% if me_type in [1, 5] %}<th>Actions</th>{% endif %}
                                 </tr>
                             </thead>
@@ -355,6 +356,18 @@
                                                 {% endif %}
                                             </td>
                                             <td class="remark-cell" title="{{ l['remarks'] or '' }}">{{ l['remarks'] or '—' }}</td>
+                                            <td>
+                                                <span class="badge-soft {{ 'amber' if l['status'] == 'pending' else ('red' if l['status'] == 'rejected' else 'green') }}">
+                                                    <i class="bi {{ 'bi-hourglass-split' if l['status'] == 'pending' else ('bi-x-circle' if l['status'] == 'rejected' else 'bi-check-circle') }}"></i>
+                                                    {{ 'Pending Approval' if l['status'] == 'pending' else ('Rejected' if l['status'] == 'rejected' else 'Approved') }}
+                                                </span>
+                                                {% if me_type in [1, 5] and l['status'] == 'pending' %}
+                                                    <div class="d-inline-flex gap-2 mt-1">
+                                                        <button type="button" class="btn-action success js-approve-ride" data-id="{{ l['id'] }}" title="Approve ride"><i class="bi bi-check-lg"></i>Approve</button>
+                                                        <button type="button" class="btn-action danger js-reject-ride" data-id="{{ l['id'] }}" title="Reject ride"><i class="bi bi-x-lg"></i>Reject</button>
+                                                    </div>
+                                                {% endif %}
+                                            </td>
                                             {% if me_type in [1, 5] %}
                                             <td>
                                                 <div class="d-inline-flex justify-content-center gap-2 actions-cell">
@@ -381,7 +394,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="{{ 9 if me_type in [1, 5] else 8 }}">
+                                        <td colspan="{{ 10 if me_type in [1, 5] else 9 }}">
                                             <div class="empty-state">
                                                 <i class="bi bi-journal-x"></i>
                                                 <p class="mb-0">{% if filter_year %}No rides recorded for {{ filter_year }}.{% else %}No daily ride transactions yet.{% endif %}</p>
@@ -1004,6 +1017,9 @@
     <script>
         const CAN_EDIT = {{ 'true' if me_type in [1, 2, 5] else 'false' }};
         const CAN_DELETE = {{ 'true' if me_type in [1, 5] else 'false' }};
+        const CAN_APPROVE = {{ 'true' if me_type in [1, 5] else 'false' }};
+        const APPROVE_RIDE_URL = '{{ url_for("approve_ride", ride_id=0) }}';
+        const REJECT_RIDE_URL = '{{ url_for("reject_ride", ride_id=0) }}';
 
         function showToast(message, type) {
             const area = document.getElementById('toastArea');
@@ -1358,6 +1374,26 @@
             if (editRideModal) editRideModal.show();
         });
 
+        function reviewRide(rideId, action) {
+            const base = action === 'approve' ? APPROVE_RIDE_URL : REJECT_RIDE_URL;
+            fetch(base.replace('/0/' + action, '/' + rideId + '/' + action), { method: 'POST' })
+                .then(async res => {
+                    let data;
+                    try { data = await res.json(); } catch (err) { data = { success: false, message: 'Unexpected server response.' }; }
+                    showToast(data.message || (data.success ? 'Ride updated.' : 'Could not update ride.'),
+                              data.success ? 'success' : 'error');
+                    if (data.success) setTimeout(() => window.location.reload(), 900);
+                })
+                .catch(() => showToast('Network error. Please try again.', 'error'));
+        }
+
+        document.addEventListener('click', e => {
+            const ap = e.target.closest('.js-approve-ride');
+            if (ap) { reviewRide(ap.dataset.id, 'approve'); return; }
+            const rj = e.target.closest('.js-reject-ride');
+            if (rj) { reviewRide(rj.dataset.id, 'reject'); return; }
+        });
+
         document.getElementById('editRideForm')?.addEventListener('submit', () => {
             suppressHistoryReopen = true;
         });
@@ -1398,30 +1434,38 @@
                     const data = await r2.json();
                     if (!data.success) { list.innerHTML = `<div class="alert alert-danger mb-0">${data.message}</div>`; return; }
                     const d = data.driver;
-                    const totKm = data.rides.reduce((s, r) => s + (parseFloat(r.km_driven) || 0), 0);
-                    const totAmt = data.rides.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                    const approvedRides = data.rides.filter(r => (r.status || 'approved') === 'approved');
+                    const totKm = approvedRides.reduce((s, r) => s + (parseFloat(r.km_driven) || 0), 0);
+                    const totAmt = approvedRides.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
                     document.getElementById('historySummary').innerHTML = `
                         <div class="d-flex flex-wrap gap-3 small">
                             <span><i class="bi bi-telephone me-1"></i>${d.phone}${d.alt_phone ? ' / ' + d.alt_phone : ''}</span>
                             <span><i class="bi bi-card-heading me-1"></i>${d.license_no}</span>
                             <span><i class="bi bi-truck me-1"></i>${d.vehicle_no || '—'}</span>
-                            <span class="ms-auto"><b>${data.rides.length}</b> rides • <b>${totKm.toFixed(1)}</b> km • <b class="text-success">₹${totAmt.toFixed(2)}</b></span>
+                            <span class="ms-auto"><b>${approvedRides.length}</b> rides • <b>${totKm.toFixed(1)}</b> km • <b class="text-success">₹${totAmt.toFixed(2)}</b></span>
                         </div>`;
-                    const actHead = (CAN_EDIT || CAN_DELETE) ? '<th>Actions</th>' : '';
+                    const actHead = (CAN_EDIT || CAN_DELETE || CAN_APPROVE) ? '<th>Actions</th>' : '';
+                    const stBadge = (st) =>
+                        `<span class="badge-soft ${st === 'pending' ? 'amber' : (st === 'rejected' ? 'red' : 'green')}">` +
+                        `<i class="bi ${st === 'pending' ? 'bi-hourglass-split' : (st === 'rejected' ? 'bi-x-circle' : 'bi-check-circle')}"></i> ` +
+                        (st === 'pending' ? 'Pending Approval' : (st === 'rejected' ? 'Rejected' : 'Approved')) + '</span>';
                     list.innerHTML = data.rides.length ? `
                         <div class="table-responsive"><table class="table users-table align-middle mb-0">
-                        <thead><tr><th>#</th><th>Date</th><th>Meter</th><th>KM</th><th>Amount</th><th>Meter Image</th><th>Remarks</th>${actHead}</tr></thead>
+                        <thead><tr><th>#</th><th>Date</th><th>Meter</th><th>KM</th><th>Amount</th><th>Meter Image</th><th>Remarks</th><th>Status</th>${actHead}</tr></thead>
                         <tbody>${data.rides.map((r, i) => {
-                            const actCell = (CAN_EDIT || CAN_DELETE) ? `
+                            const rs = r.status || 'approved';
+                            const actCell = (CAN_EDIT || CAN_DELETE || CAN_APPROVE) ? `
                                 <td>
                                     <div class="d-inline-flex gap-2 actions-cell">
-                                        ${CAN_EDIT ? `<button type="button" class="btn-action edit js-edit-ride"
+                                        ${(CAN_EDIT && rs !== 'rejected') ? `<button type="button" class="btn-action edit js-edit-ride"
                                                 data-id="${r.id}" data-date="${r.ride_date}"
                                                 data-km="${r.km_driven ?? ''}" data-mstart="${r.meter_start ?? ''}"
                                                 data-mend="${r.meter_end ?? ''}" data-amount="${r.amount ?? ''}"
                                                 data-has-meter="${r.meter_image ? '1' : '0'}"
                                                 data-remarks="${escAttr(r.remarks || '')}" title="Edit ride"><i class="bi bi-pencil-square"></i></button>` : ''}
                                         ${CAN_DELETE ? `<button type="button" class="btn-action del js-del-ride" data-id="${r.id}" title="Delete ride"><i class="bi bi-trash3"></i></button>` : ''}
+                                        ${CAN_APPROVE && rs === 'pending' ? `<button type="button" class="btn-action success js-approve-ride" data-id="${r.id}" title="Approve ride"><i class="bi bi-check-lg"></i></button>
+                                            <button type="button" class="btn-action danger js-reject-ride" data-id="${r.id}" title="Reject ride"><i class="bi bi-x-lg"></i></button>` : ''}
                                     </div>
                                 </td>` : '';
                             return `
@@ -1435,6 +1479,7 @@
                                 <td class="money green">₹ ${(parseFloat(r.amount) || 0).toFixed(2)}</td>
                                 <td>${r.meter_image ? `<img src="/static/${r.meter_image}" class="meter-thumb js-view-meter" data-full="/static/${r.meter_image}">` : '—'}</td>
                                 <td class="cell-muted">${r.remarks || '—'}</td>
+                                <td>${stBadge(rs)}${r.reviewed_by_name ? `<div class="small" style="color:#94a3b8;">by ${r.reviewed_by_name}</div>` : ''}</td>
                                 ${actCell}
                             </tr>`;
                         }).join('')}
