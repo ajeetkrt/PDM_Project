@@ -975,6 +975,11 @@ def _pdf_section(title):
     return t
 
 
+def _pdf_escape(value):
+    """Escape text so reportlab <Paragraph> renders it as plain text."""
+    return str(value or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
 def _build_rental_pdf(rental, payments):
     """Compose a professional A4 rental report for one tenant. Returns BytesIO of PDF bytes."""
     buf = io.BytesIO()
@@ -2618,23 +2623,31 @@ def _build_finance_pdf(entries, totals, fin_types):
                               f'{"entry" if len(entries) == 1 else "entries"})'))
     story.append(Spacer(1, 4))
 
+    cell_l = ParagraphStyle('fcl', fontName=_PDF_FONT, fontSize=8, leading=10.5, textColor=_PDF_INK)
+    cell_r = ParagraphStyle('fcr', parent=cell_l, alignment=TA_RIGHT)
+    cell_c = ParagraphStyle('fcc', parent=cell_l, alignment=TA_CENTER)
+    th_style = ParagraphStyle('fth', fontName=_PDF_FONT_B, fontSize=8, leading=10, textColor=colors.white)
     if entries:
-        head_row = ['#', 'Type', 'Amount', 'Bank', 'FD No', 'User Account', 'Remarks', 'Date']
+        head_row = [Paragraph(h, th_style)
+                    for h in ['#', 'Type', 'Amount', 'Bank', 'FD No', 'User Account', 'Remarks', 'Date']]
         body_rows = []
         for i, e in enumerate(entries, 1):
             holder = (f"{e['firstname']} {e['lastname'] or ''}".strip()) if e['firstname'] else '-'
             rem = e['remarks'] or '-'
-            if len(rem) > 60:
-                rem = rem[:57] + '...'
             fd = e['fd_no'] or '-'
-            if len(fd) > 18:
-                fd = fd[:15] + '...'
+            date_txt = e['entry_date'].strftime('%d %b %Y') if e['entry_date'] else '-'
             body_rows.append([
-                str(i), e['type_name'], _money_str(e['amount']), e['bank_name'],
-                fd, holder, rem, e['entry_date'].strftime('%d %b %Y') if e['entry_date'] else '-',
+                Paragraph(str(i), cell_c),
+                Paragraph(_pdf_escape(e['type_name']), cell_l),
+                Paragraph(_money_str(e['amount']), cell_r),
+                Paragraph(_pdf_escape(e['bank_name']), cell_l),
+                Paragraph(_pdf_escape(fd), cell_l),
+                Paragraph(_pdf_escape(holder), cell_l),
+                Paragraph(_pdf_escape(rem), cell_l),
+                Paragraph(date_txt, cell_l),
             ])
         det = Table([head_row] + body_rows,
-                    colWidths=[7 * mm, 22 * mm, 22 * mm, 26 * mm, 18 * mm, 26 * mm, 38 * mm, 19 * mm],
+                    colWidths=[7 * mm, 22 * mm, 22 * mm, 29 * mm, 20 * mm, 28 * mm, 33 * mm, 17 * mm],
                     repeatRows=1)
         det.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), _PDF_ACCENT_DARK),
